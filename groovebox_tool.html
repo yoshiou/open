@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GROOVE BOX ツール</title>
+<style>
+ body{font-family:system-ui,sans-serif;max-width:640px;margin:24px auto;padding:0 16px;background:#14151a;color:#e8e8ee}
+ h1{font-size:20px} button{font-size:15px;min-height:44px;padding:10px 16px;margin:4px 6px 4px 0;border-radius:8px;border:0;background:#3b6cf6;color:#fff;cursor:pointer}
+ button:disabled{background:#444;color:#999;cursor:default} .box{background:#1f2129;border-radius:10px;padding:12px 16px;margin:14px 0}
+ progress{width:100%;height:14px;margin-top:8px} select{font-size:14px;min-height:36px;padding:6px;border-radius:6px;background:#2a2d38;color:#e8e8ee;border:1px solid #444}
+ label{margin-right:12px;font-size:14px} audio{width:100%;margin-top:10px}
+ pre{background:#0c0d10;padding:10px;border-radius:8px;min-height:90px;white-space:pre-wrap;font-size:13px} small{color:#9aa}
+</style></head><body>
+<h1>🎛 GROOVE BOX ツール</h1>
+<small>Chrome / Edge で開き、GROOVE BOX をUSBでつないでください(PCでもAndroidでも可)。機器の電源が入ってメニューが出ている状態で使います。</small>
+<br><small id="diag"></small>
+<div class="box"><button id="bConn">① 機器に接続</button><button id="bConnUsb">① 機器に接続 (WebUSB)</button><span id="st">未接続</span><br>
+ <small>通常は左のボタン(Web Serial)。<b>Androidで機器が候補に出ない/つながらない場合は右のボタン(WebUSB)</b>を使います。Androidは、スマホ側の端子が1つなので、MIDIコントローラーも使うときはUSBハブ(OTG対応)が必要です。ページは https:// で開いてください(file:// や content:// だと機能が無効になることがあります)。</small></div>
+<div class="box"><b>全曲バックアップ / 復元</b> (ユーザー保存の8枠)<br>
+ <button id="bBackup" disabled>バックアップを保存 (.gbx)</button>
+ <button id="bRestore" disabled>バックアップから復元…</button><input type="file" id="fRestore" accept=".gbx" hidden>
+ <br><small>復元すると、機器の保存枠はすべて上書きされます。</small></div>
+<div class="box"><b>現在の曲</b> (GROOVE BOXで編集中の曲)<br>
+ <button id="bSong" disabled>曲を保存 (.gbsong)</button>
+ <button id="bLoad" disabled>曲を機器へ読み込み…</button><input type="file" id="fLoad" accept=".gbsong" hidden>
+ <button id="bMidi" disabled>MIDIファイルに書き出し (.mid)</button></div>
+<div class="box"><b>WAV書き出し</b> (録音)<br>
+ <small>機器で GROOVE BOX を開き、書き出したい曲を読み込んだ状態で押します。曲を頭から<b>実時間で再生しながら</b>録音します(機器のスピーカーからも音が出ます)。ミュート/ソロもそのまま反映されるので、トラック単位の書き出しもできます。</small><br>
+ <label>繰り返し <select id="wLoops"><option value="1">1回</option><option value="2" selected>2回</option><option value="4">4回</option><option value="8">8回</option></select></label>
+ <label>余韻 <select id="wTail"><option value="500">0.5秒</option><option value="2000" selected>2秒</option><option value="4000">4秒</option></select></label>
+ <label><input type="checkbox" id="wNorm" checked> 音量を最大化 (ピーク -1dB)</label><br>
+ <button id="bWav" disabled>WAVに書き出し (.wav)</button><button id="bWavStop" disabled>中止</button>
+ <progress id="wProg" value="0" max="1" hidden></progress><audio id="wAud" controls hidden></audio></div>
+<div class="box"><b>MIDIコントローラーで演奏</b><br>
+ <small>PCにつないだUSB MIDIコントローラーの演奏を、機器へ転送して鳴らします(機器はGROOVE BOXを開いておく)。<b>ch1-9,11-16=鍵盤</b>(PLAYのPKEY音色 / SMP KEYSモードならサンプル鍵盤) / <b>ch10=ドラム</b>(GM配置: 36=KICK 38=SNARE 42=HAT 46=OPEN HAT 41-50=TOM 39=CLAP 49/51=CRASH)。REC中なら演奏が曲に記録されます。ドラムレーンにサンプルを割り当てていればサンプルが鳴ります。ブラウザはChrome/Edge。</small><br>
+ <label>移調 <select id="mOct"><option value="-2">-2オクターブ</option><option value="-1">-1オクターブ</option><option value="0" selected>±0</option><option value="1">+1オクターブ</option><option value="2">+2オクターブ</option></select></label>
+ <button id="bMidiIn" disabled>MIDI入力を開始</button><span id="mSt"></span></div>
+<pre id="log"></pre>
+<script>
+const $=id=>document.getElementById(id); const log=s=>{$('log').textContent+=s+'\n'};
+let port,reader,writer,verStr='',rx=new Uint8Array(0); const enc=new TextEncoder();
+const cat=(a,b)=>{const c=new Uint8Array(a.length+b.length);c.set(a);c.set(b,a.length);return c};
+async function fill(n){while(rx.length<n){const {value,done}=await reader.read(); if(done) throw new Error('切断されました'); rx=cat(rx,value)}}
+async function readBytes(n){await fill(n);const r=rx.slice(0,n);rx=rx.slice(n);return r}
+async function readLine(){for(;;){const i=rx.indexOf(10); if(i>=0){const s=new TextDecoder().decode(rx.slice(0,i)).trim();rx=rx.slice(i+1);return s} await fill(rx.length+1)}}
+async function send(x){await writer.write(typeof x==='string'?enc.encode(x):x)}
+let busy=0;
+async function cmdGet(c){busy++;try{rx=new Uint8Array(0);await send(c+'\n');const h=(await readLine()).split(' ');if(h[0]!==c)throw new Error('応答エラー: '+h.join(' '));return await readBytes(parseInt(h[1]))}finally{busy--}}
+async function cmdPut(c,data){busy++;try{rx=new Uint8Array(0);await send(c+' '+data.length+'\n');await send(data);const r=await readLine();if(r!=='OK')throw new Error('機器からの応答: '+r)}finally{busy--}}
+function save(bytes,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:type||'application/octet-stream'}));a.download=name;a.click()}
+const ts=()=>new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+function enable(on){['bBackup','bRestore','bSong','bLoad','bMidi','bWav','bMidiIn'].forEach(i=>$(i).disabled=!on)}
+// ---- WebUSB経由のシリアル(CDC-ACM)。Androidなど Web Serial の USB対応が不十分な環境用 ----
+//  navigator.serial と同じ形 (readable.getReader().read() / writable.getWriter().write()) に包む
+class UsbSer{
+  constructor(dev){this.dev=dev;this.q=[];this.wait=null;this.alive=false;this.wq=Promise.resolve();this.err=null;
+    this.readable={getReader:()=>({read:()=>this._read()})};this.writable={getWriter:()=>({write:u=>this._write(u)})}}
+  async open(){
+    const d=this.dev;await d.open();if(!d.configuration)await d.selectConfiguration(1);
+    let ctl=null,dat=null;
+    for(const itf of d.configuration.interfaces)for(const a of itf.alternates){
+      if(a.interfaceClass===0x02&&a.interfaceSubclass===0x02&&ctl===null)ctl=itf.interfaceNumber;
+      if(a.interfaceClass===0x0A&&dat===null){const i=a.endpoints.find(e=>e.direction==='in'&&e.type==='bulk'),o=a.endpoints.find(e=>e.direction==='out'&&e.type==='bulk');
+        if(i&&o)dat={n:itf.interfaceNumber,alt:a.alternateSetting,i:i.endpointNumber,o:o.endpointNumber}}}
+    if(!dat)throw new Error('この機器にはシリアル(CDC)のインターフェースがありません。別の機器を選んでいませんか?');
+    try{if(ctl!==null)await d.claimInterface(ctl);await d.claimInterface(dat.n);if(dat.alt)await d.selectAlternateInterface(dat.n,dat.alt)}
+    catch(e){throw new Error('USBインターフェースを確保できません (他のアプリが使用中かも): '+e.message)}
+    this.ctl=ctl;this.dat=dat;
+    if(ctl!==null){                                                                                  // 115200 8N1 と DTR/RTS をON (機器のSerialはDTRが立つまで送信しない)
+      await d.controlTransferOut({requestType:'class',recipient:'interface',request:0x20,value:0,index:ctl},new Uint8Array([0x00,0xC2,0x01,0x00,0,0,8]));
+      await d.controlTransferOut({requestType:'class',recipient:'interface',request:0x22,value:0x03,index:ctl})}
+    this.alive=true;this._pump();
+    navigator.usb.addEventListener('disconnect',e=>{if(e.device===d)this._die(new Error('切断されました'))})
+  }
+  async _pump(){
+    while(this.alive){
+      try{const r=await this.dev.transferIn(this.dat.i,2048);
+        if(r.status==='ok'&&r.data&&r.data.byteLength)this._push(new Uint8Array(r.data.buffer,r.data.byteOffset,r.data.byteLength));
+        else if(r.status==='stall')await this.dev.clearHalt('in',this.dat.i)}
+      catch(e){this._die(e)}}
+  }
+  _push(u){if(this.wait){const w=this.wait;this.wait=null;w({value:u,done:false})}else this.q.push(u)}
+  _die(e){if(!this.alive)return;this.alive=false;this.err=e;if(this.wait){const w=this.wait;this.wait=null;w({value:undefined,done:true})}}
+  _read(){if(this.q.length)return Promise.resolve({value:this.q.shift(),done:false});if(!this.alive)return Promise.resolve({value:undefined,done:true});return new Promise(r=>{this.wait=r})}
+  _write(u){const d=this.dev,o=this.dat.o;                                                          // 書き込みは順番通りに直列化(MIDI転送とコマンドが混ざらないように)
+    this.wq=this.wq.then(async()=>{for(let k=0;k<u.length;k+=1024){const r=await d.transferOut(o,u.subarray(k,k+1024));if(r.status!=='ok')throw new Error('USB送信エラー: '+r.status)}});
+    return this.wq}
+}
+async function handshake(){
+  rx=new Uint8Array(0);await send('V\n');const v=await readLineT(4000);
+  if(!/^GBX/.test(v))throw new Error('GROOVE BOX ではない機器です ('+v+')');
+  verStr=v;$('st').textContent=' 接続OK: '+v;enable(true);const ver=parseInt(v.split(' ')[1])||1;
+  if(ver<2){$('bWav').disabled=true;log('この機器のファームは WAV書き出しに未対応です (GBX 2 以上が必要)')}$('bMidiIn').disabled=ver<3;log('接続しました ('+v+')')}
+$('bConn').onclick=async()=>{try{
+  if(!navigator.serial)throw new Error('このブラウザは Web Serial に未対応です。右の「WebUSB」ボタンを使ってください');
+  port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();reader=port.readable.getReader();await handshake()}catch(e){log('接続失敗: '+e.message)}};
+$('bConnUsb').onclick=async()=>{try{
+  if(!navigator.usb)throw new Error('このブラウザは WebUSB に未対応です (https:// で開いていますか?)');
+  const dev=await navigator.usb.requestDevice({filters:[]});port=new UsbSer(dev);await port.open();writer=port.writable.getWriter();reader=port.readable.getReader();await handshake()}
+  catch(e){log('接続失敗: '+(e.name==='NotFoundError'?'機器が選択されませんでした':e.message))}};
+// 環境診断(スマホで「なぜ出ないか」を確認するため)
+(()=>{const m=(navigator.userAgent||'').match(/Chrome\/(\d+)/);const y=x=>x?'○':'×';
+  $('diag').textContent='環境: Chrome '+(m?m[1]:'?')+' / Web Serial '+y(navigator.serial)+' / WebUSB '+y(navigator.usb)+' / Web MIDI '+y(navigator.requestMIDIAccess)+' / 安全なページ '+y(typeof window!=='undefined'&&window.isSecureContext)})();
+$('bBackup').onclick=async()=>{try{const d=await cmdGet('D');save(cat(enc.encode('GBX1'),d),'groovebox_'+ts()+'.gbx');log('バックアップを保存しました ('+d.length+' bytes)')}catch(e){log(e.message)}};
+$('bRestore').onclick=()=>$('fRestore').click();
+$('fRestore').onchange=async e=>{try{const b=new Uint8Array(await e.target.files[0].arrayBuffer());if(new TextDecoder().decode(b.slice(0,4))!=='GBX1')throw new Error('このファイルは .gbx ではありません');
+  await cmdPut('R',b.slice(4));log('復元しました。機器を再起動すると反映されます')}catch(err){log(err.message)}e.target.value=''};
+$('bSong').onclick=async()=>{try{const d=await cmdGet('C');save(d,'song_'+ts()+'.gbsong');log('現在の曲を保存しました')}catch(e){log(e.message)}};
+$('bLoad').onclick=()=>$('fLoad').click();
+$('fLoad').onchange=async e=>{try{await cmdPut('L',new Uint8Array(await e.target.files[0].arrayBuffer()));log('曲を機器へ読み込みました')}catch(err){log(err.message)}e.target.value=''};
+$('bMidi').onclick=async()=>{try{const d=await cmdGet('C');save(songToMidi(d),'song_'+ts()+'.mid','audio/midi');log('MIDIを書き出しました')}catch(e){log(e.message)}};
+
+// ---- WAV書き出し: 機器が曲を実時間で再生しながら送ってくる 32kHz/16bit/モノ のPCMを .wav に包む ----
+//  プロトコル: "W <周回> <余韻ms>" -> "W <推定数> <rate>" / "G"でチャンク要求 -> "K <n>"+n個のint16(LE) / "K 0"で終了 / "X"で中止
+let wavAbort=false;
+const readLineT=(ms)=>Promise.race([readLine(),new Promise((_,rj)=>setTimeout(()=>rj(new Error('機器からの応答がありません。USBを挿し直して「機器に接続」からやり直してください')),ms))]);
+function makeWav(pcm,rate){const n=pcm.length,v=new DataView(new ArrayBuffer(44+n*2)),w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);
+  w(36,'data');v.setUint32(40,n*2,true);for(let i=0;i<n;i++)v.setInt16(44+i*2,pcm[i],true);return new Uint8Array(v.buffer)}
+async function renderWav(loops,tailMs,onProg){
+  rx=new Uint8Array(0);wavAbort=false;await send('W '+loops+' '+tailMs+'\n');
+  const h=(await readLineT(8000)).split(' ');
+  if(h[0]!=='W')throw new Error(h[0]==='ERR'?(h.slice(1).join(' ').startsWith('open')?'GROOVE BOX を開いて、曲を読み込んだ状態で実行してください':'機器: '+h.slice(1).join(' ')):'応答エラー: '+h.join(' '));
+  const est=parseInt(h[1]),rate=parseInt(h[2]),parts=[];let got=0,pending=0,stopSent=false;const WIN=4;
+  for(let i=0;i<WIN;i++){await send('G\n');pending++}
+  for(;;){
+    const k=(await readLineT(15000)).split(' ');
+    if(k[0]==='CANCEL')return null;
+    if(k[0]!=='K')throw new Error('機器: '+k.join(' ')+(k[1]==='timeout'?' (PCの応答が遅すぎました)':''));
+    const n=parseInt(k[1]);pending--;
+    if(n===0)break;
+    const d=await readBytes(n*2);parts.push(d);got+=n;onProg(got,est);
+    if(wavAbort){if(!stopSent){stopSent=true;await send('X\n')}}else{await send('G\n');pending++}
+  }
+  if(wavAbort)return null;
+  const pcm=new Int16Array(got);let o=0;for(const p of parts){const dv=new DataView(p.buffer,p.byteOffset,p.byteLength);for(let i=0;i<p.byteLength;i+=2)pcm[o++]=dv.getInt16(i,true)}
+  return {pcm,rate};
+}
+$('bWavStop').onclick=()=>{wavAbort=true;$('bWavStop').disabled=true;log('中止しています…')};
+$('bWav').onclick=async()=>{
+  const loops=+$('wLoops').value,tail=+$('wTail').value,norm=$('wNorm').checked,pg=$('wProg');
+  busy++;let wl=null;try{wl=await navigator.wakeLock.request('screen')}catch(_){}enable(false);$('bWavStop').disabled=false;pg.hidden=false;pg.value=0;$('wAud').hidden=true;log('録音を開始します… (機器のスピーカーから曲が流れます)');
+  try{
+    const r=await renderWav(loops,tail,(g,e)=>{pg.max=Math.max(e,g);pg.value=g;$('st').textContent=' 録音中 '+(g/32000).toFixed(1)+' / '+(e/32000).toFixed(1)+' 秒'});
+    if(!r){log('中止しました');return}
+    let {pcm,rate}=r,peak=0;for(const x of pcm)peak=Math.max(peak,Math.abs(x));
+    if(norm&&peak>0){const g=0.891*32767/peak;for(let i=0;i<pcm.length;i++)pcm[i]=Math.max(-32768,Math.min(32767,Math.round(pcm[i]*g)))}
+    const wav=makeWav(pcm,rate),blob=new Blob([wav],{type:'audio/wav'}),url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='groovebox_'+ts()+'.wav';a.click();
+    $('wAud').src=url;$('wAud').hidden=false;
+    log('WAVを保存しました ('+(pcm.length/rate).toFixed(1)+'秒, '+rate+'Hz, 16bit モノ, '+(wav.length/1024|0)+'KB, 元のピーク '+Math.round(100*peak/32767)+'%'+(peak>=32767?' ※音割れ(クリップ)あり: MIXページのMSTR音量を下げて再録音してください':'')+')');
+  }catch(e){log('書き出し失敗: '+e.message)}
+  finally{busy--;try{if(wl)wl.release()}catch(_){}enable(true);$('bWavStop').disabled=true;pg.hidden=true;$('st').textContent=' 接続OK: '+verStr}
+};
+
+// ---- MIDIコントローラー入力 (Web MIDI) -> 機器へ "M <status> <d1> <d2>" を転送 ----
+let midiAcc=null,midiOn=false;
+const midiSend=(a,b,c)=>{if(!midiOn||busy||!writer)return;send('M '+a+' '+b+' '+c+'\n').catch(()=>{})};
+function midiMsg(e){
+  const d=e.data;if(!d||d.length<2)return;const st=d[0];if(st>=0xF0)return;                       // システムメッセージ(クロック等)は無視
+  const ty=st&0xF0,ch=st&15;let a=d[1],b=d.length>2?d[2]:0;
+  if(ty===0x90||ty===0x80){if(ch!==9)a=Math.max(0,Math.min(127,a+12*(+$('mOct').value)));midiSend(st,a,b);$('mSt').textContent=' '+(ty===0x90&&b?'♪ '+a+' (ch'+(ch+1)+')':'')}
+  else if(ty===0xB0&&(a===120||a===123))midiSend(st,a,b);
+}
+function midiBind(){const names=[];midiAcc.inputs.forEach(i=>{i.onmidimessage=midiMsg;names.push(i.name)});$('mSt').textContent=names.length?' 入力: '+names.join(', '):' (MIDI入力機器が見つかりません。USBをつないでください)'}
+$('bMidiIn').onclick=async()=>{
+  if(midiOn){midiOn=false;if(writer)send('M 176 123 0\n').catch(()=>{});$('bMidiIn').textContent='MIDI入力を開始';$('mSt').textContent='';log('MIDI入力を停止しました');return}
+  try{if(!navigator.requestMIDIAccess)throw new Error('このブラウザはWeb MIDIに未対応です (Chrome/Edgeを使ってください)');
+    midiAcc=await navigator.requestMIDIAccess();midiAcc.onstatechange=midiBind;midiOn=true;midiBind();$('bMidiIn').textContent='MIDI入力を停止';log('MIDI入力を開始しました。機器でGROOVE BOXを開いて演奏してください')}
+  catch(e){log('MIDI入力に失敗: '+e.message)}
+};
+
+// ---- Song構造体 -> 標準MIDIファイル(Type1, 480ppq) ----
+const CQ=[[0,4,7,12],[0,3,7,12],[0,4,7,10],[0,3,7,10],[0,4,7,11],[0,5,7,12],[0,3,6,12],[0,7,12,19]];
+const GM=[38,39,38,37,32,0,4,16,48,89,81,80,45,73,10,25,80,61,104,107,106,110,105,6,21,114,108,14,109,46];   // 音色番号 -> GMプログラム
+const DRUM=[36,38,42,46,45,39,56,49], DV=[0,50,90,115];
+function vlq(n){const o=[n&127];while((n>>=7)>0)o.unshift((n&127)|128);return o}
+function songToMidi(b){
+  const bars=b[1],bpm=b[2]|(b[3]<<8),inst=b.slice(8,14),tm=b.slice(14,17),chord=b.slice(29,45);
+  const sel=t=>b.slice(45+t*16,61+t*16),dr=p=>b.slice(109+p*32,141+p*32),bs=p=>b.slice(237+p*16,253+p*16),cr=p=>b.slice(301+p*16,317+p*16),ld=p=>b.slice(365+p*16,381+p*16);
+  const T=[[],[],[],[]],S=120;                      // 0=bass ch0 / 1=chord ch1 / 2=lead ch2 / 3=drums ch9
+  const add=(tr,tick,len,ch,n,v)=>{n=Math.max(0,Math.min(127,n));T[tr].push([tick,0x90|ch,n,v]);T[tr].push([tick+len-1,0x80|ch,n,0])};
+  const dur=(arr,st)=>{let k=st+1;while(k<16&&arr[k]===128)k++;return(k-st)*S};
+  for(let bar=0;bar<bars;bar++){
+    const cb=chord[bar],rt=cb&15,q=cb>>4,pb=sel(0)[bar],bsl=sel(1)[bar]&3,csl=sel(2)[bar]&3,lsl=sel(3)[bar]&7,dsl=sel(0)[bar]&3;
+    for(let st=0;st<16;st++){const tick=(bar*16+st)*S;
+      for(let l=0;l<8;l++){const v=(dr(dsl)[l*4+(st>>2)]>>((st&3)*2))&3;if(v)add(3,tick,60,9,DRUM[l],DV[v])}
+      const bc=bs(bsl)[st];if(bc>=1&&bc<=6){const base=36+rt,n=[0,base,base+CQ[q][1],base+CQ[q][2],base+12,base+CQ[q][3],base-12][bc];add(0,tick,dur(bs(bsl),st),0,n,100)}
+      const cc=cr(csl)[st],cb2=48+rt,o=CQ[q].map(x=>cb2+x);
+      if(tm[1]===2){if(cc)add(1,tick,S,1,o[st&3],90)}
+      else if(cc===1){const d=dur(cr(csl),st);if(tm[1]===1){add(1,tick,d,1,o[0],80);add(1,tick,d,1,o[1],80);add(1,tick,d,1,(q>=2&&q<=4)?o[3]:o[2],80)}else add(1,tick,d,1,o[0],90)}
+      const ln=ld(lsl)[st];if(ln>0&&ln<128)add(2,tick,dur(ld(lsl),st),2,ln,105)}
+  }
+  const tracks=[];
+  tracks.push([0,0xFF,0x51,3,...[(60000000/bpm>>16)&255,(60000000/bpm>>8)&255,(60000000/bpm)&255]]);
+  const mk=(tr,ch,prog,name)=>{const ev=T[tr].sort((a,b)=>a[0]-b[0]||(a[1]&0xF0)-(b[1]&0xF0)); const out=[];
+    out.push(0,0xFF,0x03,name.length,...enc.encode(name)); if(ch!==9)out.push(0,0xC0|ch,prog);
+    let last=0;for(const e of ev){out.push(...vlq(e[0]-last),e[1],e[2],e[3]);last=e[0]}
+    out.push(...vlq(bars*16*S-last>0?bars*16*S-last:0),0xFF,0x2F,0);return out};
+  const trk=[tracks[0].concat([0,0xFF,0x2F,0]), mk(0,0,GM[inst[1]],'BASS'), mk(1,1,GM[inst[2]],'CHORD'), mk(2,2,GM[inst[3]],'LEAD'), mk(3,9,0,'DRUMS')];
+  const out=[...enc.encode('MThd'),0,0,0,6,0,1,0,trk.length,0x01,0xE0];
+  for(const t of trk)out.push(...enc.encode('MTrk'),(t.length>>24)&255,(t.length>>16)&255,(t.length>>8)&255,t.length&255,...t);
+  return new Uint8Array(out);
+}
+if(!('serial' in navigator)){log('このブラウザは Web Serial に対応していません。Chrome か Edge (デスクトップ) をお使いください。')}
+</script></body></html>
