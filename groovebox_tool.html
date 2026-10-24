@@ -217,13 +217,14 @@ function songToMidi(b){
   const dur=(arr,st)=>{let k=st+1;while(k<16&&arr[k]===128)k++;return(k-st)*S};
   for(let bar=0;bar<bars;bar++){
     const cb=chord[bar],rt=cb&15,q=cb>>4,pb=sel(0)[bar],bsl=sel(1)[bar]&3,csl=sel(2)[bar]&3,lsl=sel(3)[bar]&7,dsl=sel(0)[bar]&3;
+    const tr=t=>((sel(t)[bar]&0xF8)<<24)>>27,trB=tr(1),trC=tr(2),trL=tr(3);          // ARRページで小節ごとに付けた移調(半音)
     for(let st=0;st<16;st++){const tick=(bar*16+st)*S;
       for(let l=0;l<8;l++){const v=(dr(dsl)[l*4+(st>>2)]>>((st&3)*2))&3;if(v)add(3,tick,60,9,DRUM[l],DV[v])}
-      const bc=bs(bsl)[st];if(bc>=1&&bc<=6){const base=36+rt,n=[0,base,base+CQ[q][1],base+CQ[q][2],base+12,base+CQ[q][3],base-12][bc];add(0,tick,dur(bs(bsl),st),0,n,100)}
-      const cc=cr(csl)[st],cb2=48+rt,o=CQ[q].map(x=>cb2+x);
+      const bc=bs(bsl)[st];if(bc>=1&&bc<=6){const base=36+rt,n=[0,base,base+CQ[q][1],base+CQ[q][2],base+12,base+CQ[q][3],base-12][bc]+trB;add(0,tick,dur(bs(bsl),st),0,n,100)}
+      const cc=cr(csl)[st],cb2=48+rt,o=CQ[q].map(x=>cb2+x+trC);
       if(tm[1]===2){if(cc)add(1,tick,S,1,o[st&3],90)}
       else if(cc===1){const d=dur(cr(csl),st);if(tm[1]===1){add(1,tick,d,1,o[0],80);add(1,tick,d,1,o[1],80);add(1,tick,d,1,(q>=2&&q<=4)?o[3]:o[2],80)}else add(1,tick,d,1,o[0],90)}
-      const ln=ld(lsl)[st];if(ln>0&&ln<128)add(2,tick,dur(ld(lsl),st),2,ln,105)}
+      const ln=ld(lsl)[st];if(ln>0&&ln<128)add(2,tick,dur(ld(lsl),st),2,ln+trL,105)}
   }
   const tracks=[];
   tracks.push([0,0xFF,0x51,3,...[(60000000/bpm>>16)&255,(60000000/bpm>>8)&255,(60000000/bpm)&255]]);
@@ -236,5 +237,5 @@ function songToMidi(b){
   for(const t of trk)out.push(...enc.encode('MTrk'),(t.length>>24)&255,(t.length>>16)&255,(t.length>>8)&255,t.length&255,...t);
   return new Uint8Array(out);
 }
-if(!('serial' in navigator)){log('このブラウザは Web Serial に対応していません。Chrome か Edge (デスクトップ) をお使いください。')}
+if(!('serial' in navigator)&&!navigator.usb){log('このブラウザは Web Serial / WebUSB に対応していません。Chrome か Edge をお使いください。')}
 </script></body></html>
