@@ -27,7 +27,7 @@
  <label>強弱 <select id="kbVel"><option value="pos" selected>押した位置</option><option value="fix">固定</option></select></label>
  <button id="kbOff">全ノートオフ</button>
  <div class="kb" id="kbKeys"></div><div class="pads" id="kbPads"></div></div>
-<div class="box"><b>全曲バックアップ / 復元</b> (ユーザー保存の8枠)<br>
+<div class="box"><b>全曲バックアップ / 復元</b> (ユーザー保存の6枠)<br>
  <button id="bBackup" disabled>バックアップを保存 (.gbx)</button>
  <button id="bRestore" disabled>バックアップから復元…</button><input type="file" id="fRestore" accept=".gbx" hidden>
  <br><small>復元すると、機器の保存枠はすべて上書きされます。</small></div>
@@ -35,6 +35,11 @@
  <button id="bSong" disabled>曲を保存 (.gbsong)</button>
  <button id="bLoad" disabled>曲を機器へ読み込み…</button><input type="file" id="fLoad" accept=".gbsong" hidden>
  <button id="bMidi" disabled>MIDIファイルに書き出し (.mid)</button></div>
+<div class="box"><b>歌詞</b> (歌声用)<br>
+ <small>機器の VOICE ページで歌声をONにすると、LEADの音符(タイを除く)1つにつき1文字ずつ、この歌詞で歌います。ひらがな/カタカナで入力(きゃ・しゅ等の拗音、っ、ん、ー、「、」=休み が使えます)。最大136音。本体の五十音表でも入力できます。<b>機器に送ると再生は止まります。</b></small><br>
+ <textarea id="lyrTx" rows="3" style="width:100%;box-sizing:border-box;background:#0c0d10;color:#e8e8ee;border:1px solid #444;border-radius:6px;padding:8px;font-size:16px" placeholder="例: ららら どれみ ふぁそらしど"></textarea><br>
+ <button id="bLyrGet" disabled>機器から読み込む</button><button id="bLyrSet" disabled>機器へ送る</button>
+ <label><input type="checkbox" id="lyrOn" checked> 送ったら歌声をONにする</label><span id="lyrInfo"></span></div>
 <div class="box"><b>WAV書き出し</b> (録音)<br>
  <small>機器で GROOVE BOX を開き、書き出したい曲を読み込んだ状態で押します。曲を頭から<b>実時間で再生しながら</b>録音します(機器のスピーカーからも音が出ます)。ミュート/ソロもそのまま反映されるので、トラック単位の書き出しもできます。</small><br>
  <label>繰り返し <select id="wLoops"><option value="1">1回</option><option value="2" selected>2回</option><option value="4">4回</option><option value="8">8回</option></select></label>
@@ -60,7 +65,7 @@ async function cmdGet(c){busy++;try{rx=new Uint8Array(0);await send(c+'\n');cons
 async function cmdPut(c,data){busy++;try{rx=new Uint8Array(0);await send(c+' '+data.length+'\n');await send(data);const r=await readLine();if(r!=='OK')throw new Error('機器からの応答: '+r)}finally{busy--}}
 function save(bytes,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:type||'application/octet-stream'}));a.download=name;a.click()}
 const ts=()=>new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
-function enable(on){['bBackup','bRestore','bSong','bLoad','bMidi','bWav','bMidiIn'].forEach(i=>$(i).disabled=!on);$('kbBox').classList.toggle('dis',!(on&&kbVer))}
+function enable(on){['bBackup','bRestore','bSong','bLoad','bMidi','bWav','bMidiIn','bLyrGet','bLyrSet'].forEach(i=>$(i).disabled=!on);$('kbBox').classList.toggle('dis',!(on&&kbVer))}
 // ---- WebUSB経由のシリアル(CDC-ACM)。Androidなど Web Serial の USB対応が不十分な環境用 ----
 //  navigator.serial と同じ形 (readable.getReader().read() / writable.getWriter().write()) に包む
 class UsbSer{
@@ -101,7 +106,7 @@ async function handshake(){
   rx=new Uint8Array(0);await send('V\n');const v=await readLineT(4000);
   if(!/^GBX/.test(v))throw new Error('GROOVE BOX ではない機器です ('+v+')');
   verStr=v;$('st').textContent=' 接続OK: '+v;enable(true);const ver=parseInt(v.split(' ')[1])||1;
-  if(ver<2){$('bWav').disabled=true;log('この機器のファームは WAV書き出しに未対応です (GBX 2 以上が必要)')}$('bMidiIn').disabled=ver<3;kbVer=ver>=3;$('kbBox').classList.toggle('dis',!kbVer);log('接続しました ('+v+')')}
+  if(ver<2){$('bWav').disabled=true;log('この機器のファームは WAV書き出しに未対応です (GBX 2 以上が必要)')}$('bMidiIn').disabled=ver<3;$('bLyrGet').disabled=$('bLyrSet').disabled=ver<4;kbVer=ver>=3;$('kbBox').classList.toggle('dis',!kbVer);log('接続しました ('+v+')')}
 $('bConn').onclick=async()=>{try{
   if(!navigator.serial)throw new Error('このブラウザは Web Serial に未対応です。右の「WebUSB」ボタンを使ってください');
   port=await navigator.serial.requestPort();await port.open({baudRate:115200});writer=port.writable.getWriter();reader=port.readable.getReader();await handshake()}catch(e){log('接続失敗: '+e.message)}};
@@ -204,6 +209,41 @@ function kbPanic(){for(const id of [...kbHeld.keys()])kbRelease(id);rawSend(176,
   $('kbDn').onclick=()=>{kbBase=Math.max(12,kbBase-12);kbLabel()};$('kbUp').onclick=()=>{kbBase=Math.min(96,kbBase+12);kbLabel()};$('kbOff').onclick=kbPanic;
   if(document.addEventListener)document.addEventListener('visibilitychange',()=>{if(document.hidden)kbPanic()});kbLabel()})();
 
+// ---- 歌詞: かな <-> 機器のコード (bd_voice.ino の KROWS と同じ。コード= 子音番号*5+母音(0あ 1い 2う 3え 4お) / 250=ー 251=っ 252=、 253=ん) ----
+const mc=(c,v)=>c*5+v;
+const KROWS=[[['あ',mc(0,0)],['い',mc(0,1)],['う',mc(0,2)],['え',mc(0,3)],['お',mc(0,4)]],
+ [['か',mc(1,0)],['き',mc(1,1)],['く',mc(1,2)],['け',mc(1,3)],['こ',mc(1,4)]],[['さ',mc(3,0)],['し',mc(17,1)],['す',mc(3,2)],['せ',mc(3,3)],['そ',mc(3,4)]],
+ [['た',mc(5,0)],['ち',mc(19,1)],['つ',mc(26,2)],['て',mc(5,3)],['と',mc(5,4)]],[['な',mc(7,0)],['に',mc(7,1)],['ぬ',mc(7,2)],['ね',mc(7,3)],['の',mc(7,4)]],
+ [['は',mc(8,0)],['ひ',mc(8,1)],['ふ',mc(27,2)],['へ',mc(8,3)],['ほ',mc(8,4)]],[['ま',mc(11,0)],['み',mc(11,1)],['む',mc(11,2)],['め',mc(11,3)],['も',mc(11,4)]],
+ [['や',mc(12,0)],['ゆ',mc(12,2)],['よ',mc(12,4)]],[['ら',mc(13,0)],['り',mc(13,1)],['る',mc(13,2)],['れ',mc(13,3)],['ろ',mc(13,4)]],[['わ',mc(14,0)],['を',mc(0,4)],['ん',253]],
+ [['が',mc(2,0)],['ぎ',mc(2,1)],['ぐ',mc(2,2)],['げ',mc(2,3)],['ご',mc(2,4)]],[['ざ',mc(4,0)],['じ',mc(18,1)],['ず',mc(4,2)],['ぜ',mc(4,3)],['ぞ',mc(4,4)]],
+ [['だ',mc(6,0)],['ぢ',mc(18,1)],['づ',mc(4,2)],['で',mc(6,3)],['ど',mc(6,4)]],[['ば',mc(9,0)],['び',mc(9,1)],['ぶ',mc(9,2)],['べ',mc(9,3)],['ぼ',mc(9,4)]],
+ [['ぱ',mc(10,0)],['ぴ',mc(10,1)],['ぷ',mc(10,2)],['ぺ',mc(10,3)],['ぽ',mc(10,4)]],
+ [['きゃ',mc(15,0)],['きゅ',mc(15,2)],['きょ',mc(15,4)]],[['ぎゃ',mc(16,0)],['ぎゅ',mc(16,2)],['ぎょ',mc(16,4)]],[['しゃ',mc(17,0)],['しゅ',mc(17,2)],['しょ',mc(17,4)]],
+ [['じゃ',mc(18,0)],['じゅ',mc(18,2)],['じょ',mc(18,4)]],[['ちゃ',mc(19,0)],['ちゅ',mc(19,2)],['ちょ',mc(19,4)]],[['にゃ',mc(20,0)],['にゅ',mc(20,2)],['にょ',mc(20,4)]],
+ [['ひゃ',mc(21,0)],['ひゅ',mc(21,2)],['ひょ',mc(21,4)]],[['びゃ',mc(22,0)],['びゅ',mc(22,2)],['びょ',mc(22,4)]],[['ぴゃ',mc(23,0)],['ぴゅ',mc(23,2)],['ぴょ',mc(23,4)]],
+ [['みゃ',mc(24,0)],['みゅ',mc(24,2)],['みょ',mc(24,4)]],[['りゃ',mc(25,0)],['りゅ',mc(25,2)],['りょ',mc(25,4)]],[['ー',250],['、',252],['っ',251]]];
+const KANA2CODE={},CODE2KANA={};for(const r of KROWS)for(const [k,c] of r){KANA2CODE[k]=c;if(!(c in CODE2KANA))CODE2KANA[c]=k}
+const LYRMAX=136, SONG_VOC=504;
+function lyricsToCodes(text){                                                                  // 文字列 -> {codes, bad}。カタカナは平仮名に直す
+  const t=[...text].map(ch=>{const c=ch.codePointAt(0);return(c>=0x30A1&&c<=0x30F6)?String.fromCodePoint(c-0x60):ch});
+  const codes=[],bad=[];
+  for(let i=0;i<t.length;i++){const ch=t[i];if(/\s/.test(ch)||ch==='・')continue;
+    if(i+1<t.length&&'ゃゅょ'.includes(t[i+1])&&(ch+t[i+1]) in KANA2CODE){codes.push(KANA2CODE[ch+t[i+1]]);i++;continue}
+    if(ch in KANA2CODE){codes.push(KANA2CODE[ch]);continue}
+    if(ch==='〜'||ch==='~'||ch==='ｰ'){codes.push(250);continue}
+    if(ch==='。'||ch===','||ch==='，'||ch==='.'){codes.push(252);continue}
+    bad.push(ch)}
+  return{codes,bad:[...new Set(bad)]}}
+const codesToLyrics=codes=>codes.map(c=>CODE2KANA[c]||'？').join('');
+$('bLyrGet').onclick=async()=>{try{const b=await cmdGet('C');if(b.length<SONG_VOC+18){log('この機器のファームは歌声に未対応です (GBX 4 以上が必要)');return}
+  const n=Math.min(b[SONG_VOC+16],LYRMAX);$('lyrTx').value=codesToLyrics(Array.from(b.slice(SONG_VOC+17,SONG_VOC+17+n)));$('lyrInfo').textContent=' '+n+'/'+LYRMAX+'音 (歌声 '+(b[SONG_VOC]?'ON':'OFF')+')';log('歌詞を読み込みました ('+n+'音)')}catch(e){log('失敗: '+e.message)}};
+$('bLyrSet').onclick=async()=>{try{const {codes,bad}=lyricsToCodes($('lyrTx').value);let c=codes;if(c.length>LYRMAX){log('歌詞が長すぎます。先頭の'+LYRMAX+'音だけ送ります');c=c.slice(0,LYRMAX)}
+  const b=await cmdGet('C');if(b.length<SONG_VOC+17+LYRMAX){log('この機器のファームは歌声に未対応です (GBX 4 以上が必要)');return}
+  b[SONG_VOC+16]=c.length;for(let i=0;i<LYRMAX;i++)b[SONG_VOC+17+i]=i<c.length?c[i]:255;if($('lyrOn').checked)b[SONG_VOC]=1;
+  await cmdPut('L',b);$('lyrInfo').textContent=' '+c.length+'/'+LYRMAX+'音 (歌声 '+(b[SONG_VOC]?'ON':'OFF')+')';
+  log('歌詞を機器へ送りました ('+c.length+'音)'+(bad.length?' / 変換できない文字を飛ばしました: '+bad.join(' '):''))}catch(e){log('失敗: '+e.message)}};
+
 // ---- Song構造体 -> 標準MIDIファイル(Type1, 480ppq) ----
 const CQ=[[0,4,7,12],[0,3,7,12],[0,4,7,10],[0,3,7,10],[0,4,7,11],[0,5,7,12],[0,3,6,12],[0,7,12,19]];
 const GM=[38,39,38,37,32,0,4,16,48,89,81,80,45,73,10,25,80,61,104,107,106,110,105,6,21,114,108,14,109,46];   // 音色番号 -> GMプログラム
@@ -213,6 +253,7 @@ function songToMidi(b){
   const bars=b[1],bpm=b[2]|(b[3]<<8),inst=b.slice(8,14),tm=b.slice(14,17),chord=b.slice(29,45);
   const sel=t=>b.slice(45+t*16,61+t*16),dr=p=>b.slice(109+p*32,141+p*32),bs=p=>b.slice(237+p*16,253+p*16),cr=p=>b.slice(301+p*16,317+p*16),ld=p=>b.slice(365+p*16,381+p*16);
   const T=[[],[],[],[]],S=120;                      // 0=bass ch0 / 1=chord ch1 / 2=lead ch2 / 3=drums ch9
+  const hasV=b.length>=SONG_VOC+17+LYRMAX, vOn=hasV&&b[SONG_VOC]===1, lyrN=hasV?Math.min(b[SONG_VOC+16],LYRMAX):0, lyr=hasV?b.slice(SONG_VOC+17,SONG_VOC+17+LYRMAX):[]; let lyrK=0;   // 歌声: 歌詞は音符1つにつき1音
   const add=(tr,tick,len,ch,n,v)=>{n=Math.max(0,Math.min(127,n));T[tr].push([tick,0x90|ch,n,v]);T[tr].push([tick+len-1,0x80|ch,n,0])};
   const dur=(arr,st)=>{let k=st+1;while(k<16&&arr[k]===128)k++;return(k-st)*S};
   for(let bar=0;bar<bars;bar++){
@@ -224,13 +265,14 @@ function songToMidi(b){
       const cc=cr(csl)[st],cb2=48+rt,o=CQ[q].map(x=>cb2+x+trC);
       if(tm[1]===2){if(cc)add(1,tick,S,1,o[st&3],90)}
       else if(cc===1){const d=dur(cr(csl),st);if(tm[1]===1){add(1,tick,d,1,o[0],80);add(1,tick,d,1,o[1],80);add(1,tick,d,1,(q>=2&&q<=4)?o[3]:o[2],80)}else add(1,tick,d,1,o[0],90)}
-      const ln=ld(lsl)[st];if(ln>0&&ln<128)add(2,tick,dur(ld(lsl),st),2,ln+trL,105)}
+      const ln=ld(lsl)[st];if(ln>0&&ln<128){let code=lyrK<lyrN?lyr[lyrK]:255,sung=true;if(vOn){if(lyrN===0)code=65;if(code===255||code===251||code===252)sung=false}
+        if(sung)add(2,tick,dur(ld(lsl),st),2,ln+trL,105);if(code!==255&&sung||(!vOn&&lyrK<lyrN)){const tx=enc.encode(CODE2KANA[code]||'');if(tx.length)T[2].push([tick,0xFF,0x05,Array.from(tx)])}lyrK++}}
   }
   const tracks=[];
   tracks.push([0,0xFF,0x51,3,...[(60000000/bpm>>16)&255,(60000000/bpm>>8)&255,(60000000/bpm)&255]]);
   const mk=(tr,ch,prog,name)=>{const ev=T[tr].sort((a,b)=>a[0]-b[0]||(a[1]&0xF0)-(b[1]&0xF0)); const out=[];
     out.push(0,0xFF,0x03,name.length,...enc.encode(name)); if(ch!==9)out.push(0,0xC0|ch,prog);
-    let last=0;for(const e of ev){out.push(...vlq(e[0]-last),e[1],e[2],e[3]);last=e[0]}
+    let last=0;for(const e of ev){if(e[1]===0xFF){out.push(...vlq(e[0]-last),0xFF,e[2],...vlq(e[3].length),...e[3])}else out.push(...vlq(e[0]-last),e[1],e[2],e[3]);last=e[0]}
     out.push(...vlq(bars*16*S-last>0?bars*16*S-last:0),0xFF,0x2F,0);return out};
   const trk=[tracks[0].concat([0,0xFF,0x2F,0]), mk(0,0,GM[inst[1]],'BASS'), mk(1,1,GM[inst[2]],'CHORD'), mk(2,2,GM[inst[3]],'LEAD'), mk(3,9,0,'DRUMS')];
   const out=[...enc.encode('MThd'),0,0,0,6,0,1,0,trk.length,0x01,0xE0];
