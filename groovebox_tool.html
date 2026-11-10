@@ -40,6 +40,19 @@
  <textarea id="lyrTx" rows="3" style="width:100%;box-sizing:border-box;background:#0c0d10;color:#e8e8ee;border:1px solid #444;border-radius:6px;padding:8px;font-size:16px" placeholder="例: ららら どれみ ふぁそらしど"></textarea><br>
  <button id="bLyrGet" disabled>機器から読み込む</button><button id="bLyrSet" disabled>機器へ送る</button>
  <label><input type="checkbox" id="lyrOn" checked> 送ったら歌声をONにする</label><span id="lyrInfo"></span></div>
+<div class="box"><b>歌のWAV → 曲データ</b> (実験的)<br>
+<small>人が歌ったWAV(<b>伴奏なし・1人</b>)から、メロディとリズムを取り出して LEAD の音符にし、歌声で歌わせる曲(.gbsong)を作ります。<b>伴奏は付きません</b>(曲を機器に入れてから、SOUND ページの STYLE などで足せます。STYLE を適用するとテンポが変わるので、テンポは直してください)。<b>重複しない小節は8種類まで</b>です(目安: 100BPMで約20秒。同じ小節の繰り返しは数えません)。録音するときは、下の「クリック音」を流しながら歌うとリズムが合います。声の特徴(歌い方・息づかい)は再現できません。</small><br>
+<input type="file" id="v2sFile" accept="audio/*,.wav"><span id="v2sInfo"></span><br>
+<label>テンポ <input type="number" id="v2sBpm" value="100" min="50" max="200" style="width:64px"> BPM</label><button id="v2sEst" type="button" disabled>推定</button>
+<label>最初の音の位置 <input type="number" id="v2sStart" value="0" min="0" max="15" style="width:52px"> ステップ</label><br>
+<label>取り込み範囲 <input type="number" id="v2sFrom" value="0" min="0" style="width:60px">〜<input type="number" id="v2sTo" value="" placeholder="最後" style="width:60px"> 秒</label>
+<label>音域 <select id="v2sOct"><option value="auto" selected>自動</option><option value="-24">-2オクターブ</option><option value="-12">-1オクターブ</option><option value="0">そのまま</option><option value="12">+1オクターブ</option><option value="24">+2オクターブ</option></select></label>
+<label>声 <select id="v2sPre"><option value="auto" selected>自動</option><option value="0">POP GIRL</option><option value="1">SWEET</option><option value="2">BOY</option><option value="3">MAN</option><option value="4">DEEP</option><option value="5">ROBOT</option><option value="6">WHISPER</option><option value="7">CHOIR</option></select></label><br>
+<textarea id="v2sLyr" rows="2" style="width:100%;box-sizing:border-box;background:#0c0d10;color:#e8e8ee;border:1px solid #444;border-radius:6px;padding:8px;font-size:16px" placeholder="歌詞(ひらがな)。音符1つにつき1音。空なら「ら」で歌います。息継ぎ(フレーズの切れ目)で空白か改行を入れると、フレーズごとに合わせるので、ずれが後ろへ伝わりません。例: われわれわ うちゅうじんだ ちきゅうじんわ みんなどれいだ"></textarea><br>
+<label><input type="checkbox" id="v2sHold"> 「ー」「っ」も音符として数える (ふつうは数えません: 前の音を伸ばす・つまるだけなので)</label><br>
+<button id="bV2S" disabled>変換</button><button id="bV2Ssave" disabled>曲を保存 (.gbsong)</button><button id="bV2Ssend" disabled>機器へ送る</button><br>
+<label>クリック音 <input type="number" id="v2sMetBars" value="8" min="1" max="32" style="width:52px"> 小節 (上のテンポ、先頭に1小節のカウント付き)</label><button id="bV2Smet" type="button">クリック音を作る (.wav)</button>
+<pre id="v2sOut" style="min-height:40px"></pre></div>
 <div class="box"><b>WAV書き出し</b> (録音)<br>
  <small>機器で GROOVE BOX を開き、書き出したい曲を読み込んだ状態で押します。曲を頭から<b>実時間で再生しながら</b>録音します(機器のスピーカーからも音が出ます)。ミュート/ソロもそのまま反映されるので、トラック単位の書き出しもできます。</small><br>
  <label>繰り返し <select id="wLoops"><option value="1">1回</option><option value="2" selected>2回</option><option value="4">4回</option><option value="8">8回</option></select></label>
@@ -65,7 +78,7 @@ async function cmdGet(c){busy++;try{rx=new Uint8Array(0);await send(c+'\n');cons
 async function cmdPut(c,data){busy++;try{rx=new Uint8Array(0);await send(c+' '+data.length+'\n');await send(data);const r=await readLine();if(r!=='OK')throw new Error('機器からの応答: '+r)}finally{busy--}}
 function save(bytes,name,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:type||'application/octet-stream'}));a.download=name;a.click()}
 const ts=()=>new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
-function enable(on){['bBackup','bRestore','bSong','bLoad','bMidi','bWav','bMidiIn','bLyrGet','bLyrSet'].forEach(i=>$(i).disabled=!on);$('kbBox').classList.toggle('dis',!(on&&kbVer))}
+function enable(on){v2sConn=on;if(typeof v2sUpd==='function')v2sUpd();['bBackup','bRestore','bSong','bLoad','bMidi','bWav','bMidiIn','bLyrGet','bLyrSet'].forEach(i=>$(i).disabled=!on);$('kbBox').classList.toggle('dis',!(on&&kbVer))}
 // ---- WebUSB経由のシリアル(CDC-ACM)。Androidなど Web Serial の USB対応が不十分な環境用 ----
 //  navigator.serial と同じ形 (readable.getReader().read() / writable.getWriter().write()) に包む
 class UsbSer{
@@ -246,7 +259,7 @@ $('bLyrSet').onclick=async()=>{try{const {codes,bad}=lyricsToCodes($('lyrTx').va
 
 // ---- Song構造体 -> 標準MIDIファイル(Type1, 480ppq) ----
 const CQ=[[0,4,7,12],[0,3,7,12],[0,4,7,10],[0,3,7,10],[0,4,7,11],[0,5,7,12],[0,3,6,12],[0,7,12,19]];
-const GM=[38,39,38,37,32,0,4,16,48,89,81,80,45,73,10,25,80,61,104,107,106,110,105,6,21,114,108,14,109,46];   // 音色番号 -> GMプログラム
+const GM=[38,39,38,37,32,0,4,16,48,89,81,80,45,73,10,25,80,61,104,107,106,110,105,6,21,114,108,14,109,46,40,42,71,68,60,56,65,23,77,8,7,11,36,39,87,38,35,50,52,92,90,80,84,81,78,9,14,24,105,28,45,19,3];   // 音色番号 -> GMプログラム
 const DRUM=[36,38,42,46,45,39,56,49], DV=[0,50,90,115];
 function vlq(n){const o=[n&127];while((n>>=7)>0)o.unshift((n&127)|128);return o}
 function songToMidi(b){
@@ -274,10 +287,256 @@ function songToMidi(b){
     out.push(0,0xFF,0x03,name.length,...enc.encode(name)); if(ch!==9)out.push(0,0xC0|ch,prog);
     let last=0;for(const e of ev){if(e[1]===0xFF){out.push(...vlq(e[0]-last),0xFF,e[2],...vlq(e[3].length),...e[3])}else out.push(...vlq(e[0]-last),e[1],e[2],e[3]);last=e[0]}
     out.push(...vlq(bars*16*S-last>0?bars*16*S-last:0),0xFF,0x2F,0);return out};
-  const trk=[tracks[0].concat([0,0xFF,0x2F,0]), mk(0,0,GM[inst[1]],'BASS'), mk(1,1,GM[inst[2]],'CHORD'), mk(2,2,GM[inst[3]],'LEAD'), mk(3,9,0,'DRUMS')];
+  const trk=[tracks[0].concat([0,0xFF,0x2F,0]), mk(0,0,(GM[inst[1]]|0),'BASS'), mk(1,1,(GM[inst[2]]|0),'CHORD'), mk(2,2,(GM[inst[3]]|0),'LEAD'), mk(3,9,0,'DRUMS')];
   const out=[...enc.encode('MThd'),0,0,0,6,0,1,0,trk.length,0x01,0xE0];
   for(const t of trk)out.push(...enc.encode('MTrk'),(t.length>>24)&255,(t.length>>16)&255,(t.length>>8)&255,t.length&255,...t);
   return new Uint8Array(out);
 }
 if(!('serial' in navigator)&&!navigator.usb){log('このブラウザは Web Serial / WebUSB に対応していません。Chrome か Edge をお使いください。')}
+// ==== 歌のWAV -> 曲データ(.gbsong) ======================================================================
+// 伴奏なしの1人の歌声を想定。音程(YIN+Viterbi) -> 音符に区切る -> BPMで16分音符に量子化 -> LEADのパターンA-Hに入れ、歌詞を音符に割り付ける。
+// 曲データ(658B)の位置は songToMidi/SONG_VOC と同じ。歌声のプリセットはファームの VPS と同じ(テストで照合)。
+const V2S_TPL='pQR4AAAAAAAEBA8KAAoAAQAHBgUGBgYAAAgBAQEAGQUHABkFBwAZBQcAGQUHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////AA==', V2S_VPS=[[0, 12, 11, 2, 5, 8, 3, 2, 5, 10, 0, 2, 11, 0], [0, 14, 8, 5, 4, 7, 5, 5, 7, 8, 0, 2, 11, 1], [0, 11, 10, 2, 4, 8, 3, 2, 5, 10, 1, 2, 11, 2], [0, 4, 9, 1, 6, 7, 4, 3, 6, 10, 1, 2, 11, 3], [0, 0, 7, 2, 5, 6, 5, 4, 8, 9, 2, 2, 12, 4], [0, 8, 14, 0, 0, 8, 0, 0, 3, 7, 0, 2, 11, 5], [0, 10, 12, 15, 1, 8, 2, 4, 6, 10, 0, 2, 12, 6], [0, 9, 6, 3, 8, 6, 6, 10, 10, 6, 0, 2, 11, 7]], V2S_VPN=['POP GIRL','SWEET','BOY','MAN','DEEP','ROBOT','WHISPER','CHOIR'];
+const V2S_O={bars:1,bpm:2,key:4,sel:45,dr:109,bs:237,cr:301,ld:365,dsmp:493,tsmp:501,voc:504,lyrN:520,lyr:521,size:658};
+const V2S_NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'], v2sName=m=>V2S_NN[m%12]+(Math.floor(m/12)-1);
+const v2sMed=a=>{const b=Array.from(a).sort((p,q)=>p-q),m=b.length>>1;return b.length?(b.length&1?b[m]:(b[m-1]+b[m])/2):0};
+function v2sB64(s){if(typeof atob==='function'){const t=atob(s),u=new Uint8Array(t.length);for(let i=0;i<t.length;i++)u[i]=t.charCodeAt(i);return u}return Uint8Array.from(Buffer.from(s,'base64'))}
+function wavDecode(buf){                                                    // ArrayBuffer -> {sr,x(モノ,-1..1)} / RIFF WAVE でなければ null
+  const dv=new DataView(buf);if(dv.byteLength<44||dv.getUint32(0)!==0x52494646||dv.getUint32(8)!==0x57415645)return null;
+  let p=12,fmt=null,data=null;
+  while(p+8<=dv.byteLength){const id=dv.getUint32(p),sz=dv.getUint32(p+4,true);
+    if(id===0x666d7420)fmt={tag:dv.getUint16(p+8,true),ch:dv.getUint16(p+10,true),sr:dv.getUint32(p+12,true),bits:dv.getUint16(p+22,true),sub:sz>=26?dv.getUint16(p+32,true):0};
+    else if(id===0x64617461){data=[p+8,Math.min(sz,dv.byteLength-p-8)];break}
+    p+=8+sz+(sz&1)}
+  if(!fmt||!data)return null;const tag=fmt.tag===0xFFFE?fmt.sub:fmt.tag,B=fmt.bits>>3,ch=Math.max(1,fmt.ch),n=Math.floor(data[1]/(B*ch));
+  if(!(tag===1||tag===3)||![1,2,3,4].includes(B))throw new Error('このWAVの形式には未対応です ('+fmt.bits+'bit)');
+  const x=new Float32Array(n);
+  for(let i=0;i<n;i++){let s=0;for(let c=0;c<ch;c++){const o=data[0]+(i*ch+c)*B;let v;
+    if(tag===3)v=B===4?dv.getFloat32(o,true):dv.getFloat64?dv.getFloat64(o,true):0;
+    else if(B===1)v=(dv.getUint8(o)-128)/128;else if(B===2)v=dv.getInt16(o,true)/32768;
+    else if(B===3){let q=dv.getUint8(o)|(dv.getUint8(o+1)<<8)|(dv.getUint8(o+2)<<16);if(q&0x800000)q-=0x1000000;v=q/8388608}else v=dv.getInt32(o,true)/2147483648;
+    s+=v}x[i]=s/ch}
+  return{sr:fmt.sr,x}}
+async function v2sDecode(buf){                                              // WAVは自前で、それ以外(mp3/m4a等)はブラウザのデコーダで
+  const w=wavDecode(buf);if(w)return w;
+  const AC=typeof AudioContext!=='undefined'?AudioContext:(typeof webkitAudioContext!=='undefined'?webkitAudioContext:null);if(!AC)throw new Error('この形式の音声はブラウザで読み込めません。WAVにしてください');
+  const ac=new AC(),ab=await ac.decodeAudioData(buf.slice(0)),n=ab.length,x=new Float32Array(n);
+  for(let c=0;c<ab.numberOfChannels;c++){const d=ab.getChannelData(c);for(let i=0;i<n;i++)x[i]+=d[i]/ab.numberOfChannels}try{ac.close()}catch(e){}return{sr:ab.sampleRate,x}}
+function v2sResample(x,sr,to){                                              // 箱形平均で縮める(ごく簡単なローパス付き)
+  if(sr===to)return Float32Array.from(x);const r=sr/to,n=Math.floor(x.length/r),y=new Float32Array(n);
+  for(let i=0;i<n;i++){const a=i*r,b=a+r,ia=Math.floor(a),ib=Math.min(x.length,Math.ceil(b));let s=0,w=0;for(let k=ia;k<ib;k++){const ww=Math.min(k+1,b)-Math.max(k,a);s+=x[k]*ww;w+=ww}y[i]=w?s/w:0}return y}
+function v2sHighpass(y,sr,fc){                                              // 2次のハイパス(約80Hz): 電源ハムや机の振動などの低い雑音を落とす
+  const w=2*Math.PI*fc/sr,c=Math.cos(w),a=Math.sin(w)/(2*0.7071),b0=(1+c)/2/(1+a),b1=-(1+c)/(1+a),b2=b0,a1=-2*c/(1+a),a2=(1-a)/(1+a),o=new Float32Array(y.length);
+  let x1=0,x2=0,y1=0,y2=0;for(let i=0;i<y.length;i++){const x=y[i],v=b0*x+b1*x1+b2*x2-a1*y1-a2*y2;o[i]=v;x2=x1;x1=x;y2=y1;y1=v}return o}
+function v2sFft(re,im){const n=re.length;for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){let t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}}
+  for(let len=2;len<=n;len<<=1){const a=-2*Math.PI/len,wr=Math.cos(a),wi=Math.sin(a);for(let i=0;i<n;i+=len){let cr=1,ci=0;for(let k=0;k<len/2;k++){const ur=re[i+k],ui=im[i+k],vr=re[i+k+len/2]*cr-im[i+k+len/2]*ci,vi=re[i+k+len/2]*ci+im[i+k+len/2]*cr;re[i+k]=ur+vr;im[i+k]=ui+vi;re[i+k+len/2]=ur-vr;im[i+k+len/2]=ui-vi;const nr=cr*wr-ci*wi;ci=cr*wi+ci*wr;cr=nr}}}}
+function v2sTrack(y,sr,o){o=o||{};const CM=o.cm||0.35,SIL=o.sil||45;y=v2sHighpass(y,sr,80);                                                    // 10msごとの音程(YIN) + 連続性で選ぶ(Viterbi) -> {midi,voiced,db,...}
+  const hop=Math.round(sr/100),W=Math.round(sr*(o.win||0.064)),tauMin=Math.max(2,Math.floor(sr/1000)),tauMax=Math.ceil(sr/70);
+  const n=Math.max(0,Math.floor((y.length-W-tauMax-2)/hop)+1),win=Math.round(sr*0.02),db=new Float32Array(n),midi=new Float32Array(n),voiced=new Uint8Array(n);
+  const tr={hop:hop/sr,W,sr,n,midi,voiced,db,time:f=>(f*hop+(W>>1))/sr};if(!n)return tr;
+  let maxDb=-200;for(let f=0;f<n;f++){const c=f*hop+(W>>1),a=Math.max(0,c-(win>>1)),b=Math.min(y.length,a+win);let e=0;for(let i=a;i<b;i++)e+=y[i]*y[i];db[f]=10*Math.log10(e/Math.max(1,b-a)+1e-12);if(db[f]>maxDb)maxDb=db[f]}
+  const sorted=Array.from(db).sort((p,q)=>p-q),floor=sorted[Math.floor(sorted.length*0.1)];   // 雑音の床 = 全フレームの下位10%の音量
+  const thr=Math.max(maxDb-SIL,Math.min(floor+(o.floorMargin!==undefined?o.floorMargin:(v2sTrack.floorMargin!==undefined?v2sTrack.floorMargin:6)),maxDb-10));   // 一定の音量の信号でも、全部が無音扱いにならないように、基準は最大音量の10dB下より上げない   // 無音の基準: 最大音量から45dB下 と 雑音の床+15dB の高い方(雑音の多い録音で、雑音を声と取り違えない)
+  tr.actThr=Math.max(floor+10,maxDb-50);tr.floor=floor;tr.maxDb=maxDb;   // 「音が出ている」とみなす音量(声が出ていない子音・小さい音節も区切るため)
+  const d=new Float64Array(tauMax+3),cm=new Float64Array(tauMax+3),cands=new Array(n);
+  for(let f=0;f<n;f++){cands[f]=[];if(db[f]<thr)continue;const s=f*hop;let sum=0;
+    for(let tau=1;tau<=tauMax+1;tau++){let a=0;for(let j=0;j<W;j++){const v=y[s+j]-y[s+j+tau];a+=v*v}d[tau]=a;sum+=a;cm[tau]=sum>0?a*tau/sum:1}
+    const cs=[];for(let tau=tauMin;tau<=tauMax;tau++)if(cm[tau]<CM&&cm[tau]<=cm[tau-1]&&cm[tau]<cm[tau+1]){
+      const c0=cm[tau-1],c1=cm[tau],c2=cm[tau+1],den=c0-2*c1+c2,tf=den>1e-12?tau+(c0-c2)/(2*den):tau,f0=sr/tf,cmin=den>1e-12?c1-(c0-c2)*(c0-c2)/(8*den):c1;   // 端数の周期でも差の最小値を補間で求める(整数ラグだと2倍の周期のほうが小さく出て、1オクターブ下に誤る)
+      cs.push({m:69+12*Math.log2(f0/440),cost:cmin+0.1*tau/tauMax})}
+    cs.sort((p,q)=>p.cost-q.cost);cands[f]=cs.slice(0,4)}
+  {const top=[];for(let f=0;f<n;f++)if(cands[f].length&&db[f]>maxDb-20)top.push(cands[f][0].m);
+   if(top.length>=10){const M=v2sMed(top),R=o.range||19;for(let f=0;f<n;f++)cands[f]=cands[f].filter(c=>Math.abs(c.m-M)<=R)}}   // 声の中心(強い所の音程の中央値)から±19半音(約1.5オクターブ)より離れた候補は捨てる
+  let prevC=null,bps=[];                                                    // Viterbi: 状態=各候補 + 無声
+  for(let f=0;f<n;f++){const cs=cands[f],K=cs.length+1,cost=new Float64Array(K),bp=new Int16Array(K);
+    for(let k=0;k<K;k++){const obs=k<cs.length?cs[k].cost:(cs.length?0.25:0);
+      if(!prevC){cost[k]=obs;bp[k]=-1;continue}
+      let best=1e18,bi=0;const pc=cands[f-1];
+      for(let j=0;j<prevC.length;j++){let t;const pv=j<pc.length,cv=k<cs.length;
+        if(pv&&cv){const dm=Math.abs(pc[j].m-cs[k].m);t=0.06*Math.min(dm,12)+(dm>7?0.3:0)}else if(pv!==cv)t=0.08;else t=0;
+        const v=prevC[j]+t;if(v<best){best=v;bi=j}}
+      cost[k]=best+obs;bp[k]=bi}
+    prevC=cost;bps.push(bp)}
+  let k=0,bv=1e18;for(let j=0;j<prevC.length;j++)if(prevC[j]<bv){bv=prevC[j];k=j}
+  for(let f=n-1;f>=0;f--){if(k<cands[f].length){voiced[f]=1;midi[f]=cands[f][k].m}k=bps[f][k]}
+  tr.cands=cands;
+  {const NB=12,ed=[100,200,300,420,560,720,920,1180,1500,1900,2500,3200,3900],FN=256,env=new Float32Array(n*NB),re=new Float64Array(FN),im=new Float64Array(FN),hw=new Float64Array(FN);for(let i=0;i<FN;i++)hw[i]=0.5-0.5*Math.cos(2*Math.PI*i/(FN-1));
+   for(let f=0;f<n;f++){const c=f*hop+(W>>1),s=c-(FN>>1);for(let i=0;i<FN;i++){const k=s+i;re[i]=(k>=0&&k<y.length?y[k]:0)*hw[i];im[i]=0}v2sFft(re,im);
+     for(let b=0;b<NB;b++){let e=0;for(let k=Math.ceil(ed[b]*FN/sr);k<ed[b+1]*FN/sr&&k<FN/2;k++)e+=re[k]*re[k]+im[k]*im[k];env[f*NB+b]=10*Math.log10(e+1e-9)}}
+   tr.env=env;tr.NB=NB}   // 音色(スペクトルの形): 12個の帯域の音量(dB)。音程や音量が同じでも、母音や子音が変わる所を見つける
+  for(let f=2;f<n-2;f++)if(voiced[f]&&voiced[f-2]&&voiced[f+2]&&voiced[f-1]&&voiced[f+1])midi[f]=v2sMed([midi[f-2],midi[f-1],midi[f],midi[f+1],midi[f+2]]);   // 連続した有声部だけ5点メディアン
+  return tr}
+function v2sSegment(tr,nWanted,minRun,phr,lng){minRun=minRun||4;const FLUXMIN=v2sSegment.fluxMin||7;                                            // 有声部 -> 音符[{f0,f1,t0,t1,pitch,midi}]。nWanted(歌詞の音数)があればちょうどその数に区切る
+  const {n,db}=tr;if(!n)return[];const v=Uint8Array.from(tr.voiced),m=Float32Array.from(tr.midi);
+  for(let f=1;f<n-1;f++)if(!v[f]&&v[f-1]){let g=1;while(f+g<n&&!v[f+g])g++;if(g<=2&&f+g<n&&Math.abs(m[f-1]-m[f+g])<1){for(let k=0;k<g;k++){v[f+k]=1;m[f+k]=m[f-1]+(m[f+g]-m[f-1])*(k+1)/(g+1)}f+=g-1}}
+  let runs=[];for(let f=0;f<n;){if(!v[f]){f++;continue}let a=f;while(f<n&&v[f])f++;if(f-a>=minRun)runs.push({a,b:f});else for(let k=a;k<f;k++)v[k]=0}
+  if(!runs.length)return[];
+  const act=new Uint8Array(n);for(let f=0;f<n;f++)act[f]=db[f]>=tr.actThr?1:0;for(let f=1;f<n-1;f++)if(!act[f]&&act[f-1]&&act[f+1])act[f]=1;for(let f=0;f<n;f++)if(v[f])act[f]=1;
+  const aruns=[];for(let f=0;f<n;){if(!act[f]){f++;continue}let a=f;while(f<n&&act[f])f++;if(f-a>=3)aruns.push({a,b:f})}   // 音が出ている区間(有声でなくてもよい)
+  const aid=new Int16Array(n).fill(-1);aruns.forEach((r,j)=>{for(let f=r.a;f<r.b;f++)aid[f]=j});
+  const silGap=f=>{const j=aid[f];if(j<=0)return 0;const r=aruns[j];return f-r.a>12?0:r.a-aruns[j-1].b};   // 候補の直前の本当の無音の長さ(音が出ていない区間。有声部が途切れていた時間ではない)
+  const sd=new Float32Array(n);for(const r of runs)for(let f=r.a;f<r.b;f++){let s=0,c=0;for(let k=Math.max(r.a,f-1);k<=Math.min(r.b-1,f+1);k++){s+=db[k];c++}sd[f]=s/c}   // 音量は有声部の内側だけで平滑(無音を含めると谷が巨大に見える)
+  const cand=[],fcand=[];const add=(f,score,ty,gl)=>cand.push({f,score,ty,gl:gl||0});   // gl=その手前の無音の長さ(フレーム)
+  runs.forEach((r,j)=>{
+    if(j>0)add(r.a,1.6+Math.min(1.6,(r.a-runs[j-1].b)/6),'gap',silGap(r.a));                                       // 無声の隙間のあとの有声(子音の境目)
+    for(let f=r.a+3;f<r.b-3;f++)if(sd[f]<=sd[f-1]&&sd[f]<sd[f+1]){                                // 音量の谷(同じ高さの音を続けて歌う所)
+      let lp=-1e9,rp=-1e9;for(let k=Math.max(r.a,f-15);k<f;k++)lp=Math.max(lp,sd[k]);for(let k=f+1;k<Math.min(r.b,f+16);k++)rp=Math.max(rp,sd[k]);
+      const depth=Math.min(Math.min(lp,rp)-sd[f],16);if(depth>=2.5)add(f,depth/4,'dip')}
+    {const NB=tr.NB,E=tr.env,fx=new Float32Array(n);                                              // 音色の変化: 前の5フレームと後ろの5フレームの、帯域ごとの音量の差(全体の音量の差は除く)の大きさ
+     for(let f=r.a+5;f<r.b-5;f++){let s2=0,dm=0;const d=new Float32Array(NB);for(let b=0;b<NB;b++){let L=0,R=0;for(let k=1;k<=5;k++){L+=E[(f-k)*NB+b];R+=E[(f+k-1)*NB+b]}d[b]=(R-L)/5;dm+=d[b]}dm/=NB;for(let b=0;b<NB;b++)s2+=(d[b]-dm)*(d[b]-dm);fx[f]=Math.sqrt(s2/NB)}
+     for(let f=r.a+5;f<r.b-5;f++)if(fx[f]>=FLUXMIN&&fx[f]>=fx[f-1]&&fx[f]>fx[f+1]&&fx[f]>=fx[Math.max(r.a,f-3)]&&fx[f]>=fx[Math.min(r.b-1,f+3)])fcand.push({f,score:Math.min(fx[f],16)/5,ty:'flux'})}
+    const dl=new Float32Array(n);for(let f=r.a+6;f<r.b-10;f++){let L=0,R=0;for(let k=1;k<=8;k++){L+=sd[Math.max(r.a,f-k)];R+=sd[f+k-1]}dl[f]=(L-R)/8}   // 音量が下がったまま続く段差(鼻音の「ん」や小さい音節に移るとき: 谷にならない)。上がる段差は、子音のあとに母音が立ち上がるだけなので使わない
+    for(let f=r.a+6;f<r.b-10;f++)if(dl[f]>=8&&dl[f]>=dl[f-1]&&dl[f]>dl[f+1])add(f,Math.min(dl[f],20)/5,'lvl');
+    const ds=new Float32Array(n);for(let f=r.a+5;f<r.b-5;f++)ds[f]=Math.abs(v2sMed(m.subarray(f,f+5))-v2sMed(m.subarray(f-5,f)));
+    for(let f=r.a+5;f<r.b-5;f++)if(ds[f]>=0.6&&ds[f]>=ds[f-1]&&ds[f]>ds[f+1])add(f,ds[f]/0.8,'step')});    // 音程の段差
+  if(nWanted>0)aruns.forEach((r,j)=>{if(j===0||r.a<=runs[0].a)return;const gap=r.a-aruns[j-1].b;if(gap<2||runs.some(q=>q.a>=r.a&&q.a<=r.a+10))return;add(r.a,1.6+Math.min(1.6,gap/6),'agap',gap)});   // 声の出ていない音節(息だけ・速い子音)の始まり: すぐあとに有声部が始まるなら、その始まり(gap)を使う
+  cand.sort((p,q)=>p.f-q.f);const mg=[];for(const c of cand){const l=mg[mg.length-1];if(l&&c.f-l.f<5){if(c.score>l.score){l.f=c.f;l.score=c.score;l.ty=c.ty}l.gl=Math.max(l.gl||0,c.gl||0)}else mg.push({f:c.f,score:c.score,ty:c.ty,gl:c.gl||0})}   // 5フレーム(50ms)以内の候補は強い方だけ
+  const first=runs[0].a,end=runs[runs.length-1].b;
+  if(nWanted>0){const need=nWanted-1-mg.filter(c=>c.f>first).length;   // 他の手がかりだけで境界が足りないときだけ、音色の変化(強い順)で補う。他の候補が100ms以内にあるものは使わない(子音から母音への移り変わりの取り違え)
+    if(need>0){fcand.sort((p,q)=>q.score-p.score);let added=0;for(const c of fcand){if(added>=need)break;if(c.f>first&&!mg.some(q=>Math.abs(q.f-c.f)<=10)){mg.push(c);added++}}mg.sort((p,q)=>p.f-q.f)}}
+  const rest=mg.filter(c=>c.f>first).sort((p,q)=>q.score-p.score);
+  const segsOf=bs=>bs.map((a,k)=>({a,b:k+1<bs.length?bs[k+1]:end}));   // (フレーズの終わりの音符は、次のフレーズの最初の音符の手前までを使う: 無音の部分は有声/音量の判定で除かれる)
+  let chosen=[first];
+  if(nWanted>0){                                                           // 歌詞の音数に合わせて、全体で最良の区切りを選ぶ(動的計画法): 区切りのスコアの合計 - 音符の中の音程のばらつき
+    const stdy=new Uint8Array(n);for(const r of runs)for(let f=r.a+10;f<r.b-10;f++){let dmx=-1e9,dmn=1e9,pmx=-1e9,pmn=1e9;for(let k=f-10;k<=f+10;k++){dmx=Math.max(dmx,sd[k]);dmn=Math.min(dmn,sd[k]);pmx=Math.max(pmx,m[k]);pmn=Math.min(pmn,m[k])}if(dmx-dmn<4&&pmx-pmn<1)stdy[f]=1}   // 伸ばしている音: 音量(4dB未満)も音程(1半音未満)もほぼ一定の所
+    const cn=new Float64Array(n+1),ca=new Float64Array(n+1),cs=new Float64Array(n+1),s1=new Float64Array(n+1),s2=new Float64Array(n+1);
+    for(let f=0;f<n;f++){ca[f+1]=ca[f]+act[f];cs[f+1]=cs[f]+stdy[f];cn[f+1]=cn[f]+v[f];s1[f+1]=s1[f]+(v[f]?m[f]:0);s2[f+1]=s2[f]+(v[f]?m[f]*m[f]:0)}
+    const LAM=0.05,cost=(a,b)=>{if(ca[b]-ca[a]<3)return 1e6;const k=cn[b]-cn[a],sa=s1[b]-s1[a],sb=s2[b]-s2[a];return(k>=3?LAM*(sb-sa*sa/k):0)+Math.max(0,9-(b-a))*0.6+((b-a)<25&&cs[b]-cs[a]>=0.9*(b-a)?3:0)};   // 音程のばらつき + 短すぎる音符(90ms未満)の罰
+    const lp=(k,a,b)=>{if(!lng||!lng.size)return 0;const la=ca[b]-ca[a];return lng.has(k)?Math.max(0,40-la)*0.15:Math.max(0,la-35)*0.1};   // 歌詞の「ー」: 「ー」の付いた音符は長いはず(400ms以上)、付いていない音符は長すぎないはず(350ms以下)
+    const dpSelect=(B,nW,endF,starts)=>{const K=Math.min(nW,B.length),NEG=-1e18,dp=[],par=[];
+      for(let k=0;k<=K;k++){dp.push(new Float64Array(B.length).fill(NEG));par.push(new Int16Array(B.length).fill(-1))}
+      dp[1][0]=0;
+      for(let k=2;k<=K;k++)for(let j=k-1;j<B.length;j++){let best=NEG,bi=-1;for(let i=k-2;i<j;i++){if(dp[k-1][i]===NEG||B[j].f-B[i].f<6)continue;const v2=dp[k-1][i]+B[j].score-cost(B[i].f,B[j].f)-lp(k-1,B[i].f,B[j].f)+(starts&&starts.has(k)?(B[j].gl>=6?Math.min(B[j].gl,60)/2:-6):0);if(v2>best){best=v2;bi=i}}dp[k][j]=best;par[k][j]=bi}   // フレーズの先頭の音符(k番目)は、長い無音の直後に始まる境界にボーナス
+      let bk=K,bj=-1,bv=NEG;for(;bk>=1&&bj<0;bk--)for(let j=0;j<B.length;j++){if(dp[bk][j]===NEG)continue;const v2=dp[bk][j]-cost(B[j].f,endF)-lp(bk,B[j].f,endF);if(v2>bv){bv=v2;bj=j}}
+      bk++;const sel=[];for(let k=bk,j=bj;k>=1&&j>=0;j=par[k][j],k--)sel.push(B[j].f);return sel.reverse()};
+    let starts=null;if(phr&&phr.length>1){starts=new Set();let c=0;for(let i=0;i<phr.length-1;i++){c+=phr[i];starts.add(c+1)}}   // フレーズの先頭の音符の番号(1始まり)。歌詞の空白・改行で区切ったフレーズごとの音数から
+    const pick=(f1,endF,nw,st)=>{const B0=mg.filter(c=>c.f>f1&&c.f<endF),B=[{f:f1,score:0},...B0];
+      if(B0.length<nw-1){const ex=fcand.filter(c=>c.f>f1&&c.f<endF&&!B0.some(q=>Math.abs(q.f-c.f)<=10)).sort((p,q)=>q.score-p.score);for(const c of ex){if(B.length>=nw)break;if(B.every(q=>Math.abs(q.f-c.f)>=6))B.push(c)}B.sort((p,q)=>p.f-q.f)}   // この範囲で境界が足りなければ、音色の変化で補う
+      if(st){for(let f=f1+8;f<endF-8;f+=8){if(act[f]&&B.every(q=>Math.abs(q.f-f)>=5))B.push({f,score:0.15,ty:'fill',gl:0})}B.sort((p,q)=>p.f-q.f)}   // 補助の候補(スコア低): フレーズ分けのとき、境界の数が足りなくても、フレーズの先頭を息継ぎに合わせられる経路を作るため
+      let sel=dpSelect(B,nw,endF,st);
+      const ext=(i)=>{const a=sel[i],b=i+1<sel.length?sel[i+1]:endF;let a1=-1,b1=-1;for(let f=a;f<b;f++)if(act[f]){if(a1<0)a1=f;b1=f+1}return a1<0?null:[a1,b1]};   // 区間のうち音が出ている範囲
+      while(sel.length<nw){let bi=-1,bl=0,bm=0;for(let i=0;i<sel.length;i++){const e=ext(i);if(!e)continue;const l=e[1]-e[0];if(l>bl){bl=l;bi=i;bm=e[0]+(l>>1)}}if(bl<12||bm<=sel[bi]+5)break;sel.splice(bi+1,0,bm)}   // それでも足りなければ、音が出ている範囲がいちばん長い区間を等分に割る(歌詞の音数ちょうどにして、あとで直せるように)
+      return sel};
+    chosen=pick(first,end,nWanted,starts);
+    if(starts){const gl=[];for(const k of starts){const f=chosen[k-1],c=f===undefined?null:mg.find(q=>q.f===f);gl.push(c?c.gl||0:0)}v2sSegment.phraseGaps=gl;v2sSegment.phraseOk=gl.every(g=>g>=8)}
+  }else{const ok=f=>chosen.every(x=>Math.abs(x-f)>=5);for(const c of rest)if(c.score>=1.5&&ok(c.f))chosen.push(c.f)}
+  chosen.sort((p,q)=>p-q);v2sSegment.dbg={cand:mg,chosen,runs};const notes=[];
+  for(const s of segsOf(chosen)){const fr=[];for(let f=s.a;f<s.b;f++)if(v[f])fr.push(f);
+    if(fr.length<3){if(nWanted>0){let a=-1,b=-1;for(let f=s.a;f<s.b;f++)if(act[f]){if(a<0)a=f;b=f+1}if(a>=0&&b-a>=3)notes.push({f0:a,f1:b,t0:tr.time(a),t1:tr.time(b),pitch:NaN,midi:NaN,weak:true})}continue}   // 有声部のない音符(歌詞の音数に合わせるとき): 音程はあとで音符ごとの周波数解析で決める
+    const a=fr[0],b=fr[fr.length-1]+1;let pv=fr.map(f=>m[f]);if(pv.length>=8)pv=pv.slice(2,pv.length-1);const p=v2sMed(pv);
+    notes.push({f0:a,f1:b,t0:tr.time(a),t1:tr.time(b),pitch:p,midi:Math.round(p)})}
+  return notes}
+function v2sShs(y,sr,t0,t1,M,R){R=R||17;                                              // 音符ごとの周波数解析: 倍音の位置の強さを足し合わせて音程を決める(基音が録音にない・音程が動く・有声の判定が足りない音節向け)
+  const FN=1024,W=Math.round(sr*0.04),hw=new Float64Array(W),re=new Float64Array(FN),im=new Float64Array(FN),pw=new Float64Array(FN/2);for(let i=0;i<W;i++)hw[i]=0.5-0.5*Math.cos(2*Math.PI*i/(W-1));
+  let a=Math.max(0,Math.floor(t0*sr)),b=Math.min(y.length,Math.floor(t1*sr));if(b-a<W){const c=(a+b)>>1;a=Math.max(0,c-(W>>1));b=Math.min(y.length,a+W)}
+  let nf=0;for(let s=a;s+W<=b;s+=Math.round(sr*0.01)){for(let i=0;i<FN;i++){re[i]=i<W?y[s+i]*hw[i]:0;im[i]=0}v2sFft(re,im);for(let k=0;k<FN/2;k++)pw[k]+=re[k]*re[k]+im[k]*im[k];nf++}
+  if(!nf)return null;const bw=sr/FN,lm=new Float64Array(FN/2);for(let k=0;k<FN/2;k++)lm[k]=Math.log1p(Math.sqrt(pw[k]/nf)*50);
+  const base=v2sMed(Array.from(lm.subarray(Math.ceil(100/bw))));for(let k=0;k<FN/2;k++)lm[k]=Math.max(0,lm[k]-base);
+  const H=10,sc=[],ms=[];let best=-1,bi=-1;
+  for(let q=0;q<=2*R*4;q++){const m=M-R+q/4,f0=440*Math.pow(2,(m-69)/12);let sal=0,inb=0;
+    for(let h=1;h<=H;h++){const w=1/Math.pow(h,0.7),k1=Math.round(f0*h/bw),k2=Math.round(f0*(h+0.5)/bw);let v1=0,v2=0;for(let d=-1;d<=1;d++){if(k1+d<FN/2)v1=Math.max(v1,lm[Math.max(0,k1+d)]);if(k2+d<FN/2)v2=Math.max(v2,lm[Math.max(0,k2+d)])}sal+=w*v1;inb+=w*v2}
+    const s=Math.max(sal-0.8*inb,0);sc.push(s);ms.push(m);if(s>best){best=s;bi=q}}
+  const med=v2sMed(sc);return{m:ms[bi],conf:med>1e-9?best/med:(best>0?99:0),sal:best}}
+function v2sFillPitch(notes,y,sr,tr){                                       // 有声部のなかった音符の音程を決める: 音符ごとの周波数解析 -> だめなら前後の音符から
+  const strong=notes.filter(q=>!q.weak).map(q=>q.pitch);const M=strong.length?v2sMed(strong):54;let filled=0;
+  notes.forEach((q,i)=>{if(!q.weak)return;let pv=null,nx=null;for(let j=i-1;j>=0&&pv===null;j--)if(!notes[j].weak)pv=notes[j].pitch;for(let j=i+1;j<notes.length&&nx===null;j++)if(!notes[j].weak)nx=notes[j].pitch;
+    const C=pv!==null&&nx!==null?(pv+nx)/2:(pv!==null?pv:(nx!==null?nx:M)),r=v2sShs(y,sr,q.t0,q.t1,C,7);                 // 前後の確かな音の高さの近く(±7半音)で探す(隣り合う音は近いことが多い)
+    if(r&&r.conf>=2.2&&r.sal>0){q.pitch=r.m;q.midi=Math.round(r.m);q.weak=false;q.shs=true;filled++;q.src='shs'}});
+  notes.forEach((q,i)=>{if(!q.weak)return;let p=null;for(let d=1;d<notes.length&&p===null;d++){for(const j of[i-d,i+d])if(j>=0&&j<notes.length&&!notes[j].weak&&!isNaN(notes[j].pitch)){p=notes[j].pitch;break}}
+    q.pitch=p===null?M:p;q.midi=Math.round(q.pitch);q.guess=true});
+  return{shs:filled,guess:notes.filter(q=>q.guess).length}}
+function v2sFixOctave(notes){                                               // 前後の音から1オクターブ以上外れていて、1オクターブ動かすと前後に近づく音を直す(子音の雑音を音程と誤判定したもの)
+  let fixed=0;const P=notes.map(q=>q.pitch);
+  notes.forEach((q,i)=>{if(q.weak)return;const nb=[];for(let d=-3;d<=3;d++)if(d&&i+d>=0&&i+d<notes.length&&!isNaN(P[i+d]))nb.push(P[i+d]);if(nb.length<3)return;const M=v2sMed(nb);
+    if(Math.abs(P[i]-M)<=8)return;let best=P[i],bd=Math.abs(P[i]-M);for(const k of[-24,-12,12,24]){const d=Math.abs(P[i]+k-M);if(d<bd){bd=d;best=P[i]+k}}
+    if(bd<=5&&best!==P[i]){q.pitch=best;q.midi=Math.round(best);q.fixed=true;fixed++}});return fixed}
+function v2sEstimateBpm(on){                                                // 音の始まりが16分音符の格子にそろうテンポを探す(目安。複数の候補を返す)
+  if(on.length<4)return{best:100,cands:[]};const R=[];
+  for(let b=50;b<=200;b+=0.25){const sd=15/b;let zr=0,zi=0;for(const t of on){const a=2*Math.PI*t/sd;zr+=Math.cos(a);zi+=Math.sin(a)}R.push([b,Math.hypot(zr,zi)/on.length])}
+  const pk=[];for(let i=1;i<R.length-1;i++)if(R[i][1]>=R[i-1][1]&&R[i][1]>R[i+1][1])pk.push(R[i]);
+  const rmax=Math.max(...pk.filter(p=>p[0]>=60&&p[0]<=180).map(p=>p[1]),0),good=pk.filter(p=>p[1]>=0.7*rmax&&p[0]>=60&&p[0]<=180);   // 音が偶数ステップだけにあると、半分のテンポでも格子が合う。0.7倍まで候補にして、70〜150BPMを優先する
+  
+  const inRange=good.filter(p=>p[0]>=70&&p[0]<=150),pool=(inRange.length?inRange:good).sort((p,q)=>q[1]-p[1]);
+  const cands=pk.filter(p=>p[0]>=60&&p[0]<=180).sort((p,q)=>q[1]-p[1]).slice(0,4).map(p=>({bpm:Math.round(p[0]),r:p[1]}));
+  return{best:pool.length?Math.round(pool[0][0]):100,cands}}
+function v2sQuantize(notes,bpm,startStep){                                  // 音符 -> {step,len,midi}。格子の位相は始まりの時刻にいちばん合うものを選ぶ
+  const sd=15/bpm;let zr=0,zi=0;for(const q of notes){const a=2*Math.PI*q.t0/sd;zr+=Math.cos(a);zi+=Math.sin(a)}
+  const phi=Math.atan2(zi,zr)/(2*Math.PI)*sd,out=[];let err=0,push=0;
+  for(const q of notes){const x=(q.t0-phi)/sd;out.push({step:Math.round(x),e:Math.round((q.t1-0.04-phi)/sd),midi:q.midi,pitch:q.pitch});err+=Math.abs(x-Math.round(x))}   // 音の終わりは、声の余韻(リリース)ぶん遅く検出されるので 40ms 引く
+  const sh=startStep-out[0].step;out.forEach(q=>{q.step+=sh;q.e+=sh});
+  for(let i=1;i<out.length;i++)if(out[i].step<=out[i-1].step){out[i].step=out[i-1].step+1;push++}
+  for(let i=0;i<out.length;i++){const nx=i+1<out.length?out[i+1].step:1e9;out[i].len=Math.max(1,Math.min(out[i].e,nx)-out[i].step)}
+  return{notes:out,err:err/notes.length,push,bpm}}
+function v2sBuild(q,o){                                                     // {step,len,midi}[] + 設定 -> 658Bの曲データ。パターンは小節ごとに重複をまとめる(最大8種)
+  const T=v2sB64(V2S_TPL),B=new Uint8Array(T),warn=[];let notes=q.map(x=>({...x}));
+  let bpm=Math.round(o.bpm);if(bpm<50||bpm>200){warn.push('テンポ '+bpm+' は本体の範囲(50〜200)の外なので丸めました');bpm=Math.min(200,Math.max(50,bpm))}
+  const lim=notes.filter(x=>x.step<256);if(lim.length<notes.length)warn.push('16小節(256ステップ)を超える部分は切り捨てました');notes=lim;
+  const bars=Math.max(1,Math.min(16,Math.ceil(notes.reduce((s,x)=>Math.max(s,x.step+x.len),0)/16)));
+  const mk=()=>Array.from({length:bars},()=>new Array(16).fill(0));let grid=mk();
+  const place=()=>{grid=mk();for(const x of notes){if(x.step>=bars*16)continue;const b=x.step>>4,s=x.step&15;grid[b][s]=Math.min(127,Math.max(1,x.midi));
+    for(let k=1;k<x.len;k++){const s2=x.step+k;if(s2>=bars*16)break;grid[s2>>4][s2&15]=128}}};   // 長い音はタイ(128)で伸ばす
+  place();const pat=[],map=new Map(),sel=[];let cut=-1;
+  for(let b=0;b<bars;b++){const key=grid[b].join(',');if(!map.has(key)){if(pat.length>=8){cut=b;break}map.set(key,pat.length);pat.push(grid[b])}sel.push(map.get(key))}
+  let useBars=bars;if(cut>=0){useBars=cut;notes=notes.filter(x=>x.step<cut*16);place();const tot=(o.codes||[]).length;warn.push('重複しない小節が8種類を超えたので、先頭の'+cut+'小節までにしました (LEADのパターンはA〜Hの8つだけです)。音符は'+notes.length+'個'+(tot?'、歌詞は全'+tot+'音のうち先頭'+Math.min(tot,notes.length)+'音までになります。残りは、取り込み範囲(秒)で後半だけを別に変換してください':'')+'。テンポが速すぎると小節が増えます(推定が合っていないかもしれません)')}
+  B[V2S_O.bars]=useBars;B[V2S_O.bpm]=bpm&255;B[V2S_O.bpm+1]=bpm>>8;
+  for(const nm of[['sel',64],['dr',128],['bs',64],['cr',64],['ld',128],['dsmp',8],['tsmp',3]])B.fill(0,V2S_O[nm[0]],V2S_O[nm[0]]+nm[1]);
+  pat.forEach((p,i)=>p.forEach((v,s)=>{B[V2S_O.ld+i*16+s]=v}));sel.slice(0,useBars).forEach((p,b)=>{B[V2S_O.sel+3*16+b]=p});
+  const pre=Math.min(7,Math.max(0,o.preset|0));B[V2S_O.voc]=1;for(let i=1;i<14;i++)B[V2S_O.voc+i]=V2S_VPS[pre][i];B[V2S_O.voc+14]=B[V2S_O.voc+15]=0;
+  const kept=notes.length,codes=(o.codes||[]).slice(0,Math.min(136,kept));B[V2S_O.lyrN]=codes.length;for(let i=0;i<136;i++)B[V2S_O.lyr+i]=i<codes.length?codes[i]:255;
+  return{bytes:B,bars:useBars,patterns:pat.length,kept,warn,grid:grid.slice(0,useBars),sel:sel.slice(0,useBars)}}
+function v2sGridText(grid){return grid.map((g,b)=>('小節'+(b+1)+' ').padEnd(7)+g.map(v=>(v===0?'.':v===128?'~':v2sName(v)).padEnd(4)).join('')).join('\n')}
+function voiceToSong(x,sr,o){                                               // 変換の全体。o={bpm(0=推定),startStep,text,octave('auto'|数),preset('auto'|0-7),from,to}
+  o=o||{};const rep=[];let s0=Math.max(0,Math.floor((o.from||0)*sr)),s1=o.to?Math.min(x.length,Math.floor(o.to*sr)):x.length;
+  if(s1-s0>sr*90){s1=s0+sr*90;rep.push('長すぎるので先頭90秒だけを使います')}
+  const y=v2sResample(x.subarray(s0,s1),sr,8000),lc=o.text?lyricsToCodes(o.text):{codes:[],bad:[]};
+  const lng=new Set();if(!o.keepHold){let c=0;for(const x of lc.codes){if(x===250){if(c>0)lng.add(c)}else if(x!==251)c++}}   // 「ー」が付いた音符の番号(1始まり): 長い音のはず
+  const dropN=o.keepHold?0:lc.codes.filter(c=>c===250||c===251).length,codes=o.keepHold?lc.codes:lc.codes.filter(c=>c!==250&&c!==251);   // 「ー」「っ」は音符を使わない(前の音を伸ばす・つまるだけ)
+  const phrC=(o.text||'').split(/[\s\u3000]+/).filter(s=>s.length).map(s=>{const c=lyricsToCodes(s).codes;return o.keepHold?c:c.filter(x=>x!==250&&x!==251)}),phr=phrC.length>1?phrC.map(c=>c.length):null;   // 空白・改行で区切った歌詞 = フレーズ(息継ぎごと)
+  let notes=[],trB=null,pOk=null;for(const q of[{cm:0.35,sil:45,run:4},{cm:0.5,sil:55,run:3}]){const tr=v2sTrack(y,8000,q);v2sSegment.phraseOk=undefined;const nn=v2sSegment(tr,codes.length,q.run,phr,lng);if(nn.length>notes.length){notes=nn;trB=tr;pOk=v2sSegment.phraseOk}if(!codes.length||notes.length>=codes.length)break}
+  // (↑ 歌詞の音数より音符が少ないときは、判定をゆるめてやり直す)
+  const fp=notes.some(q=>q.weak)?v2sFillPitch(notes,y,8000,trB):{shs:0,guess:0};
+  const fo=v2sFixOctave(notes);
+  if(!notes.length)throw new Error('歌声(音程のある部分)が見つかりませんでした。伴奏のない、1人の歌声のWAVを使ってください');
+  let bpm=o.bpm,est=null;if(!bpm){est=v2sEstimateBpm(notes.map(q=>q.t0));bpm=est.best;
+    {const rb=Math.max(...est.cands.map(c=>c.r),0);let be=1e9;for(const c of est.cands){if(c.r<0.85*rb||c.bpm<70||c.bpm>150)continue;const e=v2sQuantize(notes,c.bpm,0).err;if(e<be-0.01){be=e;bpm=c.bpm}}}   // 候補が近い値で競り合うときは、音の始まりが16分音符にいちばんよく合うテンポを選ぶ
+  rep.push('テンポを推定しました: '+bpm+' BPM (候補 '+est.cands.map(c=>c.bpm).join(' / ')+')。違うときはテンポを入力してやり直してください')}
+  const q=v2sQuantize(notes,bpm,o.startStep|0);
+  let med=v2sMed(notes.map(n=>n.pitch)),shift=0;
+  if(o.octave==='auto'||o.octave===undefined){while(med+shift>76)shift-=12;while(med+shift<52)shift+=12}else shift=(o.octave|0);
+  q.notes.forEach(n=>{n.midi=Math.min(127,Math.max(1,n.midi+shift))});
+  const preset=(o.preset==='auto'||o.preset===undefined)?(med<55?3:0):(o.preset|0);
+  const r=v2sBuild(q.notes,{bpm,preset,codes});
+  const lo=Math.min(...q.notes.map(n=>n.midi)),hi=Math.max(...q.notes.map(n=>n.midi)),dur=(s1-s0)/sr;
+  rep.push('取り込み '+dur.toFixed(1)+'秒 / 音符 '+notes.length+'個 / テンポ '+bpm+' BPM / '+r.bars+'小節 (パターン'+r.patterns+'種)');
+  rep.push('音域 '+v2sName(lo)+'〜'+v2sName(hi)+(shift?' (元の歌から'+(shift>0?'+':'')+shift/12+'オクターブ移動)':'')+' / 声 '+V2S_VPN[preset]);
+  rep.push('リズムのずれの平均 '+(q.err*100).toFixed(0)+'% (16分音符に対して。小さいほど合っています)'+(q.push?' / 同じ位置に重なった音を'+q.push+'個ずらしました':''));
+  if(phr)rep.push(pOk?'フレーズ'+phr.length+'個('+phr.join('/')+'音): 録音の息継ぎ(長い無音)で区切って、フレーズごとに音符を割り付けました':'★歌詞は'+phr.length+'フレーズですが、録音の息継ぎ(長い無音)がその数に足りないため、フレーズ分けは使えませんでした(全体で割り付けました)');
+  if(dropN)rep.push('歌詞の「ー」「っ」'+dropN+'個は、音符を使わず、前の音を伸ばす・つまるものとして扱いました (歌詞は'+codes.length+'音)');
+  if(fp.shs||fp.guess)rep.push('有声の判定が足りなかった音符 '+(fp.shs+fp.guess)+'個の音程は、'+(fp.shs?'周波数の解析で'+fp.shs+'個':'')+(fp.guess?(fp.shs?'、':'')+'前後の音から推測で'+fp.guess+'個':'')+'決めました (違っているかもしれません)');
+  if(fo)rep.push('前後の音から1オクターブ以上外れていた音 '+fo+'個を、1オクターブずらして直しました (本当に高い音だったときは、EDITページで戻してください)');
+  if(codes.length){if(codes.length!==notes.length)rep.push('★歌詞は'+codes.length+'音ですが、音符は'+notes.length+'個です。'+(notes.length<codes.length?'音符が足りません(歌詞の後ろは歌いません)':'歌詞が足りません(後ろの音符は「ら」になります)')+'。歌詞の区切りか、歌い方(はっきり区切る)を見直してください');else rep.push('歌詞 '+codes.length+'音を音符に割り付けました')}
+  else rep.push('歌詞なし: 「ら」で歌います');
+  if(lc.bad&&lc.bad.length)rep.push('歌詞に使えない文字を飛ばしました: '+lc.bad.join(''));
+  r.warn.forEach(w=>rep.push('★'+w));
+  return{bytes:r.bytes,report:rep,grid:v2sGridText(r.grid),bpm,notes:q.notes,est}}
+function v2sEstimateAudio(x,sr,o){o=o||{};const a=Math.max(0,Math.floor((o.from||0)*sr)),b=o.to?Math.min(x.length,Math.floor(o.to*sr)):x.length,tr=v2sTrack(v2sResample(x.subarray(a,Math.min(b,a+sr*90)),sr,8000),8000),nt=v2sSegment(tr,0);
+  if(nt.length<4)throw new Error('テンポを推定できるだけの音符が見つかりません');return v2sEstimateBpm(nt.map(q=>q.t0))}
+function v2sMetronome(bpm,bars,countIn){                                    // 歌いながら録音するためのクリック音(32kHz/16bit/モノ WAV)。先頭に countIn 小節のカウント
+  const sr=32000,beat=60/bpm,total=Math.round((bars+countIn)*4*beat*sr),pcm=new Int16Array(total);
+  for(let k=0;k<(bars+countIn)*4;k++){const t0=Math.round(k*beat*sr),f=(k%4===0)?1600:1000,len=Math.round(0.03*sr);for(let i=0;i<len&&t0+i<total;i++)pcm[t0+i]+=Math.round(12000*Math.exp(-i/(len*0.35))*Math.sin(2*Math.PI*f*i/sr))}
+  const w=new Uint8Array(44+total*2),dv=new DataView(w.buffer),S=(o,s)=>{for(let i=0;i<s.length;i++)w[o+i]=s.charCodeAt(i)};
+  S(0,'RIFF');dv.setUint32(4,36+total*2,true);S(8,'WAVEfmt ');dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,1,true);dv.setUint32(24,sr,true);dv.setUint32(28,sr*2,true);dv.setUint16(32,2,true);dv.setUint16(34,16,true);S(36,'data');dv.setUint32(40,total*2,true);
+  for(let i=0;i<total;i++)dv.setInt16(44+i*2,pcm[i],true);return w}
+// ==== 歌のWAV -> 曲データ ここまで ===================================================================
+
+// ---- 歌のWAV -> 曲データ: 画面 ----
+var v2sAudio=null,v2sSong=null,v2sConn=false;
+const v2sUpd=()=>{$('bV2Ssend').disabled=!(v2sConn&&v2sSong);$('bV2Ssave').disabled=!v2sSong;$('bV2S').disabled=!v2sAudio;$('v2sEst').disabled=!v2sAudio};
+$('v2sFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{v2sAudio=await v2sDecode(await f.arrayBuffer());$('v2sInfo').textContent=' '+f.name+' ('+(v2sAudio.x.length/v2sAudio.sr).toFixed(1)+'秒)';v2sSong=null;$('v2sOut').textContent=''}catch(err){v2sAudio=null;$('v2sInfo').textContent='';log('読み込めません: '+err.message)}v2sUpd()};
+const v2sOpts=()=>({bpm:parseFloat($('v2sBpm').value)||0,startStep:parseInt($('v2sStart').value)||0,text:$('v2sLyr').value,octave:$('v2sOct').value==='auto'?'auto':parseInt($('v2sOct').value),preset:$('v2sPre').value==='auto'?'auto':parseInt($('v2sPre').value),keepHold:!!$('v2sHold').checked,from:parseFloat($('v2sFrom').value)||0,to:parseFloat($('v2sTo').value)||0});
+$('v2sEst').onclick=()=>{try{const r=v2sEstimateAudio(v2sAudio.x,v2sAudio.sr,v2sOpts());$('v2sBpm').value=r.best;$('v2sOut').textContent='テンポの推定: '+r.best+' BPM (候補 '+r.cands.map(c=>c.bpm+'('+(c.r*100).toFixed(0)+'%)').join(' / ')+')\n合っていないときは、テンポを入力して「変換」してください。'}catch(err){$('v2sOut').textContent='失敗: '+err.message}};
+$('bV2S').onclick=()=>{try{const r=voiceToSong(v2sAudio.x,v2sAudio.sr,v2sOpts());v2sSong=r.bytes;$('v2sBpm').value=r.bpm;$('v2sOut').textContent=r.report.join('\n')+'\n\n'+r.grid}catch(err){v2sSong=null;$('v2sOut').textContent='失敗: '+err.message}v2sUpd()};
+$('bV2Ssave').onclick=()=>{save(v2sSong,'voice_'+ts()+'.gbsong');log('変換した曲を保存しました')};
+$('bV2Ssend').onclick=async()=>{try{await cmdPut('L',v2sSong);log('変換した曲を機器へ読み込みました')}catch(e){log(e.message)}};
+$('bV2Smet').onclick=()=>{const b=parseFloat($('v2sBpm').value)||100,n=Math.max(1,Math.min(32,parseInt($('v2sMetBars').value)||8));save(v2sMetronome(b,n,1),'click_'+Math.round(b)+'bpm.wav','audio/wav');log('クリック音を書き出しました ('+Math.round(b)+' BPM, 先頭に1小節のカウント + '+n+'小節)')};
 </script></body></html>
