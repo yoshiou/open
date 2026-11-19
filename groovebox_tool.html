@@ -53,14 +53,14 @@
  <div id="kbBox" class="dis"></div>
  <div id="kbCfg" hidden>
   <b>演奏の設定</b> <button id="cfgClose" style="min-height:32px;padding:2px 10px">閉じる</button><br>
-  <label>鍵の大きさ <select id="cfgSize"><option value="S">小</option><option value="M" selected>中</option><option value="L">大</option></select></label>
+  <label>1段のオクターブ数 <select id="cfgOct"><option value="auto" selected>自動</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option></select></label>
   <label>段数 <select id="cfgRows"><option value="auto" selected>自動</option><option value="1">1段</option><option value="2">2段</option><option value="3">3段</option></select></label>
   <label>パッドの位置 <select id="cfgPad"><option value="auto" selected>自動</option><option value="left">左</option><option value="right">右</option><option value="top">上</option><option value="bottom">下</option><option value="none">なし</option></select></label>
   <label>指をすべらせる <select id="cfgGlide"><option value="off" selected>しない</option><option value="on">する(グリッサンド)</option></select></label>
   <label>強弱 <select id="kbVel"><option value="pos" selected>押した位置</option><option value="fix">固定</option></select></label>
   <label>PCのキーボード <select id="cfgPc"><option value="on" selected>使う</option><option value="off">使わない</option></select></label>
   <button id="cfgReset" style="min-height:32px;padding:2px 10px">初期設定に戻す</button><br>
-  <small>機器でGROOVE BOXを開いた状態で、画面をタッチして演奏します(複数指OK)。鍵盤=PLAYのPKEY音色(SMP KEYSモードならサンプル鍵盤)、パッド=ドラム8レーン(ch10)。機器がREC中なら演奏が曲に記録されます。強弱は<b>鍵/パッドを押した位置の高さ</b>(上=弱い、下=強い)。鍵の数と段数は画面の大きさに合わせて自動で決まります(上の細いバーをなぞると音域が動きます)。<b>PCのキーボード</b>: 下の段 Z S X D C V G B H N J M , = 一番左のCから、上の段 Q 2 W 3 E R 5 T 6 Y 7 U I = そのオクターブ上。← → でオクターブ移動。</small>
+  <small>機器でGROOVE BOXを開いた状態で、画面をタッチして演奏します(複数指OK)。鍵盤=PLAYのPKEY音色(SMP KEYSモードならサンプル鍵盤)、パッド=ドラム8レーン(ch10)。機器がREC中なら演奏が曲に記録されます。強弱は<b>鍵/パッドを押した位置の高さ</b>(上=弱い、下=強い)。鍵の数と段数は画面の大きさに合わせて自動で決まります。<b>1段のオクターブ数</b>を選ぶと、鍵の横幅を直接決められます(数を減らすほど鍵は太くなります。1段のときは右端にCを1つ足します。画面に入らない指定は入る数に調整します)。上の細いバーをなぞると音域が動きます。<b>PCのキーボード</b>: 下の段 Z S X D C V G B H N J M , = 一番左のCから、上の段 Q 2 W 3 E R 5 T 6 Y 7 U I = そのオクターブ上。← → でオクターブ移動。</small>
 <div class="cfgsec"><b>MIDIコントローラーで演奏</b><br>
  <small>PCにつないだUSB MIDIコントローラーの演奏を、機器へ転送して鳴らします(機器はGROOVE BOXを開いておく)。<b>ch1-9,11-16=鍵盤</b>(PLAYのPKEY音色 / SMP KEYSモードならサンプル鍵盤) / <b>ch10=ドラム</b>(GM配置: 36=KICK 38=SNARE 42=HAT 46=OPEN HAT 41-50=TOM 39=CLAP 49/51=CRASH)。REC中なら演奏が曲に記録されます。ドラムレーンにサンプルを割り当てていればサンプルが鳴ります。ブラウザはChrome/Edge。</small><br>
  <label>移調 <select id="mOct"><option value="-2">-2オクターブ</option><option value="-1">-1オクターブ</option><option value="0" selected>±0</option><option value="1">+1オクターブ</option><option value="2">+2オクターブ</option></select></label>
@@ -252,16 +252,16 @@ $('bMidiIn').onclick=async()=>{
 // ---- 画面の鍵盤とパッド (タッチ演奏): Web MIDIを通さず直接 "M ..." を送る ----
 //  配置は演奏領域(#kbBox)の大きさから playLayout() が座標で決める(鍵の幅・段数・パッドの位置)。
 //  指は領域全体で受けて、座標から hitTest() で鍵/パッドを決める(複数指・グリッサンドもこれで処理する)。
-const KB_W={S:40,M:44,L:56},KB_PADS=[['KICK',36],['SNARE',38],['HAT',42],['OPEN',46],['TOM',45],['CLAP',39],['PERC',56],['CRASH',49]],KB_WHITE=[0,2,4,5,7,9,11],KB_BLK=[1,1,0,1,1,1,0];
-const KB_DEF={size:'M',rows:'auto',pad:'auto',glide:'off',pc:'on',vel:'pos',base:48};
-const KB_OK={size:['S','M','L'],rows:['auto','1','2','3'],pad:['auto','left','right','top','bottom','none'],glide:['off','on'],pc:['on','off'],vel:['pos','fix']};
+const KB_TARGET=44,KB_MINW=28,KB_MAXOCT=9,KB_PADS=[['KICK',36],['SNARE',38],['HAT',42],['OPEN',46],['TOM',45],['CLAP',39],['PERC',56],['CRASH',49]],KB_WHITE=[0,2,4,5,7,9,11],KB_BLK=[1,1,0,1,1,1,0];
+const KB_DEF={oct:'auto',rows:'auto',pad:'auto',glide:'off',pc:'on',vel:'pos',base:48};
+const KB_OK={oct:['auto','1','2','3','4','5','6','7','8'],rows:['auto','1','2','3'],pad:['auto','left','right','top','bottom','none'],glide:['off','on'],pc:['on','off'],vel:['pos','fix']};
 const KB_LO=12,KB_HI=120;                                                                     // 表示する音域の下限/上限(MIDIノート。12=C0 120=C8)
 const clampN=(v,a,b)=>Math.max(a,Math.min(b,v));
 function kbClean(o){const c=Object.assign({},KB_DEF);if(o&&typeof o==='object'){for(const k in KB_OK)if(KB_OK[k].includes(String(o[k])))c[k]=String(o[k]);if(Number.isFinite(+o.base))c.base=+o.base}c.base=clampN(Math.round(c.base/12)*12,KB_LO,KB_HI);return c}
 const kbName=n=>['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][n%12]+(Math.floor(n/12)-1);
 // 演奏領域 W x H(px)にパッドと鍵盤を置く。戻り値は全て座標(領域の左上が原点)。段は下から j=0,1,2(下の段が低い音。上の段は下の段の続き)
 function playLayout(W,H,c){
-  c=kbClean(c);const target=KB_W[c.size],GAP=6,RGAP=4;
+  c=kbClean(c);const target=KB_TARGET,GAP=6,RGAP=4,K=c.oct==='auto'?0:+c.oct;   // K: 1段のオクターブ数の指定(0=自動)
   const place=p=>{
     if(p==='none')return{pad:null,kb:{x:0,y:0,w:W,h:H}};
     if(p==='left'||p==='right'){const pw=Math.round(clampN(W*.2,120,200));return{pad:{x:p==='left'?0:W-pw,y:0,w:pw,h:H,cols:2,rows:4},kb:{x:p==='left'?pw+GAP:0,y:0,w:W-pw-GAP,h:H}}}
@@ -270,13 +270,15 @@ function playLayout(W,H,c){
   const padMin=q=>q&&Math.min((q.w-GAP*(q.cols-1))/q.cols,(q.h-GAP*(q.rows-1))/q.rows);
   if(pos!=='none'&&(a.kb.h<100||a.kb.w<260||padMin(a.pad)<44)){pos='none';a=place('none')}   // 狭すぎるとき(鍵盤が100px未満・パッド1つが44px未満)はパッドをやめて鍵盤を優先
   const kb=a.kb,nMax=Math.max(1,Math.floor(kb.w/target)),opts=[];
-  for(let r=1;r<=3;r++){                                                                      // 段数の候補。1段あたり k オクターブ(全体で7オクターブまで。白鍵の幅は目標以上)
-    const rh=(kb.h-RGAP*(r-1))/r,k=Math.max(1,Math.min(Math.floor((nMax-(r===1?1:0))/7),Math.floor(7/r))),nw=7*k+(r===1?1:0),ww=kb.w/nw;
-    opts.push({r,k,nw,ww,rh,score:-10*r*k+Math.abs(Math.log(ww/target))+.3*Math.abs(Math.log(Math.max(rh,1)/clampN(3.6*ww,110,220)))})}
+  for(let r=1;r<=3;r++){                                                                      // 段数の候補。1段あたり k オクターブ
+    const rh=(kb.h-RGAP*(r-1))/r,kAuto=Math.max(1,Math.min(Math.floor((nMax-(r===1?1:0))/7),Math.floor(7/r)));   // 自動: 白鍵の幅が目標(44px)以上・全体で7オクターブまで
+    const kFit=Math.max(1,Math.floor((kb.w/KB_MINW-(r===1?1:0))/7)),k=K?Math.min(K,kFit):kAuto;                    // 手動: 指定のオクターブ数(白鍵の幅が28px未満になるなら入る数に減らす)
+    const nw=7*k+(r===1?1:0),ww=kb.w/nw,ok=!K||r*k<=KB_MAXOCT;                                                     // 手動のときは、全体で9オクターブ(C0〜C8)を超える段数は選ばない
+    opts.push({r,k,nw,ww,rh,ok,cut:!!K&&k<K,score:-10*r*k+Math.abs(Math.log(ww/target))+.3*Math.abs(Math.log(Math.max(rh,1)/clampN(3.6*ww,110,220)))})}
   let pick;
-  if(c.rows!=='auto'){pick=opts[+c.rows-1];while(pick.rh<70&&pick.r>1)pick=opts[pick.r-2]}   // 手動の段数でも、鍵が低くなりすぎるなら減らす
-  else{const good=opts.filter(o=>o.rh>=120),pool=good.length?good:opts.filter(o=>o.rh>=70);pick=(pool.length?pool:[opts[0]]).reduce((m,o)=>o.score<m.score?o:m)}   // 自動: 鍵の高さ120px以上を保てる中で音域(段数×オクターブ)がいちばん広い組。同じなら幅が目標に近い組
-  const {r:rows,k,nw,ww,rh}=pick,span=12*k*rows,lo=clampN(c.base,KB_LO,KB_HI-span),keys=[];
+  if(c.rows!=='auto'){pick=opts[+c.rows-1];while(pick.r>1&&(pick.rh<70||!pick.ok))pick=opts[pick.r-2]}   // 手動の段数でも、鍵が低くなりすぎる/音域を超えるなら減らす
+  else{const okk=opts.filter(o=>o.ok),good=okk.filter(o=>o.rh>=120),pool=good.length?good:okk.filter(o=>o.rh>=70);pick=(pool.length?pool:[opts[0]]).reduce((m,o)=>o.score<m.score?o:m)}   // 自動: 鍵の高さ120px以上を保てる中で音域(段数×オクターブ)がいちばん広い組。同じなら幅が目標に近い組
+  const {r:rows,k,nw,ww,rh}=pick,cut=pick.cut||(c.rows!=='auto'&&rows<+c.rows),span=12*k*rows,lo=clampN(c.base,KB_LO,KB_HI-span),keys=[];
   for(let j=0;j<rows;j++){
     const y=kb.y+(rows-1-j)*(rh+RGAP),base=lo+12*k*j;
     for(let i=0;i<nw;i++)keys.push({note:base+12*Math.floor(i/7)+KB_WHITE[i%7],black:false,row:j,x:kb.x+i*ww,y,w:ww,h:rh});
@@ -284,7 +286,7 @@ function playLayout(W,H,c){
   const pads=[];
   if(a.pad){const p=a.pad,cw=(p.w-GAP*(p.cols-1))/p.cols,ch=(p.h-GAP*(p.rows-1))/p.rows;
     KB_PADS.forEach(([name,note],i)=>pads.push({name,note,x:p.x+(i%p.cols)*(cw+GAP),y:p.y+Math.floor(i/p.cols)*(ch+GAP),w:cw,h:ch}))}
-  return{W,H,pos,padRect:a.pad,kbRect:kb,rows,k,nw,ww,rh,lo,hi:keys.reduce((m,x)=>Math.max(m,x.note),0),span,keys,pads}}
+  return{W,H,pos,cut,padRect:a.pad,kbRect:kb,rows,k,nw,ww,rh,lo,hi:keys.reduce((m,x)=>Math.max(m,x.note),0),span,keys,pads}}
 function hitTest(L,x,y){                                                                      // 座標 -> 鍵/パッド。黒鍵を先に調べる。f = 押した高さ(0=上 1=下)
   if(!L)return null;
   const inr=(r)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h;
@@ -295,7 +297,7 @@ function hitTest(L,x,y){                                                        
 let cfg=kbClean(null),PL=null,kbConn=false;const kbHeld=new Map(),kbEls=new Map();             // kbHeld: 指/キーのid -> {kind,note,off:[status,note]|null}  kbEls: 'key60'/'pad36' -> 要素
 function kbSave(){try{if(typeof localStorage!=='undefined')localStorage.setItem('gbx_play',JSON.stringify(cfg))}catch(_){}}
 function kbLoad(){try{if(typeof localStorage!=='undefined'){const s=localStorage.getItem('gbx_play');if(s)cfg=kbClean(JSON.parse(s))}}catch(_){cfg=kbClean(null)}}
-const KB_UI={size:'cfgSize',rows:'cfgRows',pad:'cfgPad',glide:'cfgGlide',pc:'cfgPc',vel:'kbVel'};
+const KB_UI={oct:'cfgOct',rows:'cfgRows',pad:'cfgPad',glide:'cfgGlide',pc:'cfgPc',vel:'kbVel'};
 function kbUiSet(){for(const k in KB_UI)$(KB_UI[k]).value=cfg[k]}
 const kbVelOf=f=>cfg.vel==='fix'?100:Math.round(30+97*clampN(f,0,1));                         // 上=30 下=127
 function kbMark(kind,note,on){const e=kbEls.get(kind+note);if(e)e.classList[on?'add':'remove']('on')}
@@ -305,7 +307,7 @@ function kbPanic(){for(const id of [...kbHeld.keys()])kbRelease(id);pcHeld.clear
 const kbOn=()=>kbVer&&!busy;
 function kbLabel(){
   $('kbOct').textContent=kbName(cfg.base)+' – '+kbName(PL?PL.hi:cfg.base+24);
-  $('kbInfo').textContent=PL?PL.rows+'段 × '+PL.nw+'鍵 ・ パッド'+({left:'左',right:'右',top:'上',bottom:'下',none:'なし'})[PL.pos]:'';
+  $('kbInfo').textContent=PL?PL.rows+'段 × '+PL.nw+'鍵('+PL.k+'オクターブ/段)・ パッド'+({left:'左',right:'右',top:'上',bottom:'下',none:'なし'})[PL.pos]+(PL.cut?' ・ 画面に入る数に調整':''):'';
   const w=$('kbWin');if(PL){w.style.left=((cfg.base-KB_LO)/(KB_HI-KB_LO)*100)+'%';w.style.width=(PL.span/(KB_HI-KB_LO)*100)+'%'}}
 function kbHintUpd(){$('kbHint').textContent=kbVer?'':(kbConn?'この機器のファームはタッチ演奏に未対応です':'未接続: 「接続」を押し、機器はGROOVE BOXを開いてください')}
 function kbRelayout(){                                                                        // 演奏領域の大きさに合わせて鍵とパッドを作り直す(画面サイズ・設定・タブ切替・全画面のたびに)
